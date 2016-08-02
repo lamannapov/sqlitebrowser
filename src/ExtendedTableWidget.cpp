@@ -22,6 +22,8 @@ ExtendedTableWidget::ExtendedTableWidget(QWidget* parent) :
     // Set up filter row
     m_tableHeader = new FilterTableHeader(this);
     setHorizontalHeader(m_tableHeader);
+
+    verticalHeader()->setContextMenuPolicy(Qt::CustomContextMenu);
 }
 
 void ExtendedTableWidget::copy()
@@ -105,15 +107,9 @@ void ExtendedTableWidget::paste()
 
     // Unpack cliboard, assuming that it is rectangular
     QList<QStringList> clipboardTable;
-    QStringList cr = clipboard.split(endOfLine);
+    QStringList cr = clipboard.trimmed().split(endOfLine);
     foreach(const QString& r, cr)
-    {
-        // Usually last splited line is empty
-        if(!r.isEmpty())
-        {
-            clipboardTable.push_back(r.split("\t"));
-        }
-    }
+        clipboardTable.push_back(r.split("\t"));
 
     int clipboardRows = clipboardTable.size();
     int clipboardColumns = clipboardTable.front().size();
@@ -204,16 +200,12 @@ void ExtendedTableWidget::keyPressEvent(QKeyEvent* event)
         {
             // When pressing Alt+Delete set the value to NULL
             foreach(const QModelIndex& index, selectedIndexes())
-                model()->setData(index, QString());
+                model()->setData(index, QVariant());
         } else {
             // When pressing Delete only set the value to empty string
             foreach(const QModelIndex& index, selectedIndexes())
                 model()->setData(index, "");
         }
-    } else if(event->key() == Qt::Key_Return && selectedIndexes().count() == 1 && state() != QTableView::EditingState) {
-        // When hitting the return key simulate a double click. This way you can change the focus to the editor dock when pressing the
-        // return key for advanced editing, just like a double click would open the edit dialog
-        emit doubleClicked(selectedIndexes().at(0));
     }
 
     // This prevents the current selection from being changed when pressing tab to move to the next filter. Note that this is in an 'if' condition,

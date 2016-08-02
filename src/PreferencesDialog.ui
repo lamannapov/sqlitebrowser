@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>590</width>
-    <height>495</height>
+    <height>555</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -232,7 +232,7 @@
          </property>
         </widget>
        </item>
-       <item row="4" column="1">
+       <item row="5" column="1">
         <widget class="QPushButton" name="buttonDatabaseAdvanced">
          <property name="text">
           <string>Advanced</string>
@@ -246,8 +246,8 @@
          </property>
         </widget>
        </item>
-       <item row="6" column="1">
-        <widget class="SqlTextEdit" name="editDatabaseDefaultSqlText" native="true">
+       <item row="7" column="1">
+        <widget class="SqlTextEdit" name="editDatabaseDefaultSqlText">
          <property name="minimumSize">
           <size>
            <width>20</width>
@@ -262,7 +262,7 @@
          </property>
         </widget>
        </item>
-       <item row="6" column="0">
+       <item row="7" column="0">
         <widget class="QLabel" name="labelDatabaseDefaultSqlText">
          <property name="text">
           <string>SQL to execute after opening database</string>
@@ -272,7 +272,7 @@
          </property>
         </widget>
        </item>
-       <item row="7" column="1">
+       <item row="8" column="1">
         <spacer name="horizontalSpacer_2">
          <property name="orientation">
           <enum>Qt::Horizontal</enum>
@@ -284,6 +284,16 @@
           </size>
          </property>
         </spacer>
+       </item>
+       <item row="4" column="1">
+        <widget class="QComboBox" name="defaultFieldTypeComboBox"/>
+       </item>
+       <item row="4" column="0">
+        <widget class="QLabel" name="defaultFieldTypeLabel">
+         <property name="text">
+          <string>Default field type</string>
+         </property>
+        </widget>
        </item>
       </layout>
      </widget>
@@ -532,20 +542,40 @@
             <string>Filters</string>
            </property>
            <layout class="QFormLayout" name="gridLayout_4">
-            <item row="0" column="1">
+            <item row="1" column="1">
              <widget class="QLineEdit" name="editFilterEscape">
               <property name="maxLength">
                <number>1</number>
               </property>
              </widget>
             </item>
-            <item row="0" column="0">
+            <item row="1" column="0">
              <widget class="QLabel" name="label_18">
               <property name="text">
                <string>Escape character</string>
               </property>
               <property name="buddy">
                <cstring>editFilterEscape</cstring>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="0">
+             <widget class="QLabel" name="label_19">
+              <property name="text">
+               <string>Delay time (&amp;ms)</string>
+              </property>
+              <property name="buddy">
+               <cstring>spinFilterDelay</cstring>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QSpinBox" name="spinFilterDelay">
+              <property name="toolTip">
+               <string>Set the waiting time before a new filter value is applied. Can be set to 0 for disabling waiting.</string>
+              </property>
+              <property name="maximum">
+               <number>5000</number>
               </property>
              </widget>
             </item>
@@ -789,7 +819,7 @@
          <item row="0" column="1">
           <widget class="QFontComboBox" name="comboEditorFont"/>
          </item>
-         <item row="4" column="0">
+         <item row="5" column="0">
           <widget class="QLabel" name="label_15">
            <property name="text">
             <string>Error indicators</string>
@@ -799,7 +829,7 @@
            </property>
           </widget>
          </item>
-         <item row="4" column="1">
+         <item row="5" column="1">
           <widget class="QCheckBox" name="checkErrorIndicators">
            <property name="toolTip">
             <string>Enabling error indicators highlights the SQL code lines that caused errors during the last execution</string>
@@ -809,7 +839,7 @@
            </property>
           </widget>
          </item>
-         <item row="5" column="0">
+         <item row="6" column="0">
           <widget class="QLabel" name="label_10">
            <property name="text">
             <string>Hori&amp;zontal tiling</string>
@@ -819,11 +849,28 @@
            </property>
           </widget>
          </item>
-         <item row="5" column="1">
+         <item row="6" column="1">
           <widget class="QCheckBox" name="checkHorizontalTiling">
            <property name="toolTip">
             <string>If enabled the SQL code editor and the result table view are shown side by side instead of one over the other.</string>
            </property>
+           <property name="text">
+            <string>enabled</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0">
+          <widget class="QLabel" name="label_20">
+           <property name="text">
+            <string>Code co&amp;mpletion</string>
+           </property>
+           <property name="buddy">
+            <cstring>checkAutoCompletion</cstring>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="1">
+          <widget class="QCheckBox" name="checkAutoCompletion">
            <property name="text">
             <string>enabled</string>
            </property>
@@ -927,7 +974,7 @@
  <customwidgets>
   <customwidget>
    <class>SqlTextEdit</class>
-   <extends>QWidget</extends>
+   <extends>QTextEdit</extends>
    <header>sqltextedit.h</header>
    <container>1</container>
   </customwidget>
@@ -943,6 +990,9 @@
   <tabstop>foreignKeysCheckBox</tabstop>
   <tabstop>checkHideSchemaLinebreaks</tabstop>
   <tabstop>spinPrefetchSize</tabstop>
+  <tabstop>defaultFieldTypeComboBox</tabstop>
+  <tabstop>buttonDatabaseAdvanced</tabstop>
+  <tabstop>editDatabaseDefaultSqlText</tabstop>
   <tabstop>comboDataBrowserFont</tabstop>
   <tabstop>spinDataBrowserFontSize</tabstop>
   <tabstop>txtNull</tabstop>
@@ -952,11 +1002,14 @@
   <tabstop>fr_bin_bg</tabstop>
   <tabstop>fr_reg_fg</tabstop>
   <tabstop>fr_reg_bg</tabstop>
+  <tabstop>spinFilterDelay</tabstop>
+  <tabstop>editFilterEscape</tabstop>
   <tabstop>treeSyntaxHighlighting</tabstop>
   <tabstop>comboEditorFont</tabstop>
   <tabstop>spinEditorFontSize</tabstop>
   <tabstop>spinLogFontSize</tabstop>
   <tabstop>spinTabSize</tabstop>
+  <tabstop>checkAutoCompletion</tabstop>
   <tabstop>checkErrorIndicators</tabstop>
   <tabstop>checkHorizontalTiling</tabstop>
   <tabstop>listExtensions</tabstop>
@@ -975,8 +1028,8 @@
    <slot>saveSettings()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>275</x>
-     <y>488</y>
+     <x>281</x>
+     <y>525</y>
     </hint>
     <hint type="destinationlabel">
      <x>155</x>
@@ -991,8 +1044,8 @@
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>343</x>
-     <y>488</y>
+     <x>349</x>
+     <y>525</y>
     </hint>
     <hint type="destinationlabel">
      <x>286</x>
@@ -1039,12 +1092,12 @@
    <slot>showColourDialog(QTreeWidgetItem*,int)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>111</x>
-     <y>87</y>
+     <x>103</x>
+     <y>48</y>
     </hint>
     <hint type="destinationlabel">
      <x>395</x>
-     <y>-1</y>
+     <y>0</y>
     </hint>
    </hints>
   </connection>
@@ -1071,12 +1124,12 @@
    <slot>setVisible(bool)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>367</x>
-     <y>189</y>
+     <x>375</x>
+     <y>202</y>
     </hint>
     <hint type="destinationlabel">
-     <x>205</x>
-     <y>220</y>
+     <x>64</x>
+     <y>243</y>
     </hint>
    </hints>
   </connection>
@@ -1087,12 +1140,12 @@
    <slot>setVisible(bool)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>376</x>
-     <y>191</y>
+     <x>375</x>
+     <y>202</y>
     </hint>
     <hint type="destinationlabel">
-     <x>331</x>
-     <y>219</y>
+     <x>375</x>
+     <y>251</y>
     </hint>
    </hints>
   </connection>

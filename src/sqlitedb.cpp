@@ -313,7 +313,11 @@ bool DBBrowserDB::releaseAllSavepoints()
         if(!releaseSavepoint(point))
             return false;
     }
-    executeSQL("COMMIT;", false, false);  // Just to be sure
+
+    // When still in a transaction, commit that too
+    if(sqlite3_get_autocommit(_db) == 0)
+        executeSQL("COMMIT;", false, false);
+
     return true;
 }
 
@@ -420,7 +424,8 @@ bool DBBrowserDB::dump(const QString& filename,
     const QStringList & tablesToDump,
     bool insertColNames,
     bool insertNewSyntx,
-    bool exportSchemaOnly)
+    bool exportSchema,
+    bool exportData)
 {
     // Open file
     QFile file(filename);
@@ -466,9 +471,11 @@ bool DBBrowserDB::dump(const QString& filename,
                 continue;
 
             // Write the SQL string used to create this table to the output file
-            stream << it->getsql() << ";\n";
+            if(exportSchema)
+                stream << it->getsql() << ";\n";
 
-            if (exportSchemaOnly)
+            // If the user doesn't want the data to be exported skip the rest of the loop block here
+            if(!exportData)
                 continue;
 
             // get columns
@@ -557,17 +564,18 @@ bool DBBrowserDB::dump(const QString& filename,
             sqlite3_finalize(stmt);
         }
 
-        // Now dump all the other objects
-        for(objectMap::ConstIterator it=objMap.begin();it!=objMap.end();++it)
+        // Now dump all the other objects (but only if we are exporting the schema)
+        if(exportSchema)
         {
-            // Make sure it's not a table again
-            if(it.value().gettype() == "table")
-                continue;
-
-            // Write the SQL string used to create this object to the output file
-            if(!it->getsql().isEmpty())
+            for(objectMap::ConstIterator it=objMap.begin();it!=objMap.end();++it)
             {
-                stream << it->getsql() << ";\n";
+                // Make sure it's not a table again
+                if(it.value().gettype() == "table")
+                    continue;
+
+                // Write the SQL string used to create this object to the output file
+                if(!it->getsql().isEmpty())
+                    stream << it->getsql() << ";\n";
             }
         }
 
@@ -608,16 +616,20 @@ bool DBBrowserDB::executeMultiSQL(const QString& statement, bool dirty, bool log
     if(!isOpen())
         return false;
 
+    QString query = statement;
+
+    query.remove(QRegExp("^\\s*BEGIN TRANSACTION;|COMMIT;\\s*$"));
+
     // Log the statement if needed
     if(log)
-        logSQL(statement, kLogMsg_App);
+        logSQL(query, kLogMsg_App);
 
     // Set DB to dirty/create restore point if necessary
     if(dirty)
         setSavepoint();
 
     // Show progress dialog
-    int statement_size = statement.size();
+    int statement_size = query.size();
     QProgressDialog progress(tr("Executing SQL..."),
                              tr("Cancel"), 0, statement_size);
     progress.setWindowModality(Qt::ApplicationModal);
@@ -625,7 +637,7 @@ bool DBBrowserDB::executeMultiSQL(const QString& statement, bool dirty, bool log
 
     // Execute the statement by looping until SQLite stops giving back a tail string
     sqlite3_stmt* vm;
-    QByteArray utf8Query = statement.toUtf8();
+    QByteArray utf8Query = query.toUtf8();
     const char *tail = utf8Query.data();
     int res = 0;
     unsigned int line = 0;

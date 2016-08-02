@@ -54,7 +54,7 @@ public:
     bool revertToSavepoint(const QString& pointname = "RESTOREPOINT");
     bool releaseAllSavepoints();
     bool revertAll();
-    bool dump(const QString & filename, const QStringList &tablesToDump, bool insertColNames, bool insertNew, bool exportSchemaOnly);
+    bool dump(const QString & filename, const QStringList &tablesToDump, bool insertColNames, bool insertNew, bool exportSchema, bool exportData);
     bool executeSQL ( const QString & statement, bool dirtyDB=true, bool logsql=true);
     bool executeMultiSQL(const QString& statement, bool dirty = true, bool log = false);
 
@@ -108,6 +108,7 @@ public:
     bool encrypted() const { return isEncrypted; }
     bool readOnly() const { return isReadOnly; }
     bool getDirty() const;
+    QString currentFile() const { return curDBFilename; }
     void logSQL(QString statement, int msgtype);
 
     QString getPragma(const QString& pragma);
@@ -122,13 +123,14 @@ public:
     objectMap objMap;
 
     QString lastErrorMessage;
-    QString curDBFilename;
 
 signals:
     void sqlExecuted(QString sql, int msgtype);
     void dbChanged(bool dirty);
 
 private:
+    QString curDBFilename;
+
     QStringList savepointList;
 
     bool isEncrypted;

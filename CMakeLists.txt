@@ -12,9 +12,9 @@ endif()
 
 if(WIN32 AND MSVC)
 	if(CMAKE_CL_64)
-		set(QT5_PATH "E:/Qt64/Qt5.5.1/5.5/msvc2013_64")
-		set(SQLITE3_PATH "E:/libs/sqlite3_x64")
-		set(OPENSSL_PATH "E:/libs/openssl-1.0.2a-x64_86-win64")
+		set(SQLITE3_PATH "C:/dev/SQLite")
+		set(QT5_PATH "C:/dev/Qt/5.6/msvc2013_64")
+		set(OPENSSL_PATH "C:/dev/OpenSSL-Win64")
 		set(VSREDIST "vcredist_x64.exe")
 	else()
 		set(QT5_PATH "E:/Qt/Qt5.5.1/5.5/msvc2013")
@@ -150,14 +150,17 @@ set(SQLB_MISC
 
 # Translation files
 set(SQLB_TSS
+	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_ar.ts"
 	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_zh.ts"
 	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_zh_TW.ts"
 	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_de.ts"
+	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_es_ES.ts"
 	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_fr.ts"
 	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_ru.ts"
 	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_pt_BR.ts"
 	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_en_GB.ts"
 	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_ko_KR.ts"
+	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_tr.ts"
 )
 
 if(USE_QT5)
@@ -315,12 +318,26 @@ endif(UNIX AND NOT APPLE)
 
 if(WIN32 AND MSVC)
 	set(QT5_BIN_PATH ${QT5_PATH}/bin)
+	# The Qt5 Debug configuration library files have a 'd' postfix
+	install(FILES
+			${QT5_BIN_PATH}/Qt5Cored.dll
+			${QT5_BIN_PATH}/Qt5Guid.dll
+			${QT5_BIN_PATH}/Qt5Networkd.dll
+			${QT5_BIN_PATH}/Qt5PrintSupportd.dll
+			${QT5_BIN_PATH}/Qt5Widgetsd.dll
+		DESTINATION bin
+		CONFIGURATIONS Debug)
+	# The Qt5 Release configuration files don't have a postfix
 	install(FILES
 			${QT5_BIN_PATH}/Qt5Core.dll
 			${QT5_BIN_PATH}/Qt5Gui.dll
 			${QT5_BIN_PATH}/Qt5Network.dll
 			${QT5_BIN_PATH}/Qt5PrintSupport.dll
 			${QT5_BIN_PATH}/Qt5Widgets.dll
+		DESTINATION bin
+		CONFIGURATIONS Release)
+	# The files below are common to all configurations
+	install(FILES
 			${QT5_BIN_PATH}/icudt54.dll
 			${QT5_BIN_PATH}/icuin54.dll
 			${QT5_BIN_PATH}/icuuc54.dll
@@ -331,7 +348,6 @@ if(WIN32 AND MSVC)
 	install(FILES
 		${QT5_PATH}/plugins/platforms/qwindows.dll
 		DESTINATION bin/platforms)
-
 	install(PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/deps/${VSREDIST} DESTINATION tmp)
 endif()
 
@@ -359,8 +375,8 @@ if(WIN32 AND NOT UNIX)
 
 	# VS redist
 	list(APPEND CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
-               ExecWait '$INSTDIR\\\\tmp\\\\${VSREDIST} /install /passive /quiet'
-               Delete '$INSTDIR\\\\tmp\\\\${VSREDIST}'
+               ExecWait '\\\"$INSTDIR\\\\tmp\\\\${VSREDIST}\\\" /install /passive /quiet'
+               Delete '\\\"$INSTDIR\\\\tmp\\\\${VSREDIST}\\\"'
                ")
 else(WIN32 AND NOT UNIX)
 	set(CPACK_STRIP_FILES "bin/sqlitebrowser")

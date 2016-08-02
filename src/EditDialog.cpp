@@ -5,17 +5,20 @@
 #include "src/qhexedit.h"
 #include "FileDialog.h"
 
+#include <QMainWindow>
 #include <QKeySequence>
 #include <QShortcut>
+#include <QImageReader>
+#include <QBuffer>
 
-EditDialog::EditDialog(QWidget* parent, bool forUseInDockWidget)
+EditDialog::EditDialog(QWidget* parent)
     : QDialog(parent),
-      ui(new Ui::EditDialog),
-      useInDock(forUseInDockWidget)
+      ui(new Ui::EditDialog)
 {
     ui->setupUi(this);
-    ui->buttonBox->button(QDialogButtonBox::Ok)->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_Return));
-    ui->buttonBox->button(QDialogButtonBox::Cancel)->setVisible(!forUseInDockWidget);
+
+    // Add Ctrl-Enter (Cmd-Enter on OSX) as a shortcut for the Apply button
+    ui->buttonApply->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_Return));
 
     QHBoxLayout* hexLayout = new QHBoxLayout(ui->editorBinary);
     hexEdit = new QHexEdit(this);
@@ -36,6 +39,12 @@ EditDialog::~EditDialog()
 
 void EditDialog::reset()
 {
+    // Set the font for the text and hex editors
+    QFont editorFont(PreferencesDialog::getSettingsValue("databrowser", "font").toString());
+    editorFont.setPointSize(PreferencesDialog::getSettingsValue("databrowser", "fontsize").toInt());
+    ui->editorText->setFont(editorFont);
+    hexEdit->setFont(editorFont);
+
     curRow = -1;
     curCol = -1;
     ui->editorText->clear();
@@ -43,7 +52,13 @@ void EditDialog::reset()
     ui->editorImage->clear();
     hexEdit->setData(QByteArray());
     oldData = "";
-    checkDataType();
+
+    // Hide the warning about editing non-text data in text mode
+    ui->labelBinaryWarning->setVisible(false);
+
+    // Update the cell data info in the bottom left of the Edit Cell
+    int dataType = checkDataType();
+    updateCellInfo(dataType);
 }
 
 void EditDialog::closeEvent(QCloseEvent*)
@@ -54,28 +69,19 @@ void EditDialog::closeEvent(QCloseEvent*)
 void EditDialog::showEvent(QShowEvent*)
 {
     // Whenever the dialog is shown, position it at the center of the parent dialog
-    QPoint center = mapToGlobal(rect().center());
     QMainWindow* parentDialog = qobject_cast<QMainWindow*>(parent());
     if(parentDialog)
     {
-        QPoint parentCenter = parentDialog->window()->mapToGlobal(parentDialog->window()->rect().center());
-        move(parentCenter - center);
+        move(parentDialog->x() + parentDialog->width() / 2 - width() / 2,
+            parentDialog->y() + parentDialog->height() / 2 - height() / 2);
     }
 }
 
 void EditDialog::reject()
 {
-    // This is called when pressing the cancel button or hitting the escape key
-
-    // If we're in dock mode, reset all fields and move the cursor back to the table view.
-    // If we're in window mode, call the default implementation to just close the window normally.
-    if(useInDock)
-    {
-        loadText(oldData, curRow, curCol);
-        emit goingAway();
-    } else {
-        QDialog::reject();
-    }
+    // We override this, to ensure the Escape key doesn't make the Edit Cell
+    // dock go away
+    return;
 }
 
 void EditDialog::loadText(const QByteArray& data, int row, int col)
@@ -89,17 +95,41 @@ void EditDialog::loadText(const QByteArray& data, int row, int col)
     ui->editorText->setPlainText(textData);
     hexEdit->setData(data);
 
-    // If we're in window mode (not in dock mode) focus the editor widget
-    if(!useInDock)
-    {
-        ui->editorText->setFocus();
+    // Determine the data type in the cell
+    int dataType = checkDataType();
+
+    // Do some data type specific handling
+    QImage img;
+    switch (dataType) {
+    case Text:
+        // For text, ensure it's all selected in the Edit Cell
         ui->editorText->selectAll();
+
+        // Clear any image from the image viewing widget
+        ui->editorImage->setPixmap(QPixmap(0,0));
+        break;
+
+    case Image:
+        // For images, load the image into the image viewing widget
+        if (img.loadFromData(hexEdit->data())) {
+            ui->editorImage->setPixmap(QPixmap::fromImage(img));
+        }
+        break;
+
+    default:
+        // Clear the image viewing widget for everything else too
+        ui->editorImage->setPixmap(QPixmap(0,0));
+        break;
     }
 
-    // Assume it's binary data and only call checkDatyType afterwards. This means the correct input widget is selected here in all cases
-    // but once the user changed it to text input it will stay there.
-    ui->editorStack->setCurrentIndex(1);
-    checkDataType();
+    // Get the current editor mode (eg text, hex, or image mode)
+    int editMode = ui->editorStack->currentIndex();
+
+    // Show or hide the warning about editing binary data in text mode
+    updateBinaryEditWarning(editMode, dataType);
+
+    // Update the cell data info in the bottom left of the Edit Cell
+    updateCellInfo(dataType);
 }
 
 void EditDialog::importData()
@@ -125,8 +155,11 @@ void EditDialog::importData()
             QByteArray d = file.readAll();
             hexEdit->setData(d);
             ui->editorText->setPlainText(d);
-            checkDataType();
             file.close();
+
+            // Update the cell data info in the bottom left of the Edit Cell
+            int dataType = checkDataType();
+            updateCellInfo(dataType);
         }
     }
 }
@@ -149,12 +182,16 @@ void EditDialog::exportData()
     }
 }
 
-void EditDialog::clearData()
+void EditDialog::setNull()
 {
     ui->editorText->clear();
     ui->editorImage->clear();
     hexEdit->setData(QByteArray());
-    checkDataType();
+
+    // Update the cell data info in the bottom left of the Edit Cell
+    int dataType = checkDataType();
+    updateCellInfo(dataType);
+
     ui->editorText->setFocus();
 }
 
@@ -164,11 +201,21 @@ void EditDialog::accept()
     // To differentiate NULL and empty byte arrays, we also compare the NULL flag
     if(hexEdit->data() != oldData || hexEdit->data().isNull() != oldData.isNull())
     {
-        const QString dataType = ui->comboEditor->currentText();
-        bool isBlob = dataType == tr("Binary") || !ui->comboEditor->isVisible();
+        const QString dataType = ui->comboMode->currentText();
+        bool isBlob = dataType == tr("Binary");
         emit updateRecordText(curRow, curCol, isBlob, hexEdit->data());
     }
-    emit goingAway();
+}
+
+// Called when the user manually changes the "Mode" drop down combobox
+void EditDialog::editModeChanged(int editMode)
+{
+    // Switch to the selected editor
+    ui->editorStack->setCurrentIndex(editMode);
+
+    // Show or hide the warning about editing binary data in text mode
+    int dataType = checkDataType();
+    updateBinaryEditWarning(editMode, dataType);
 }
 
 void EditDialog::editTextChanged()
@@ -178,7 +225,10 @@ void EditDialog::editTextChanged()
         hexEdit->blockSignals(true);
         hexEdit->setData(ui->editorText->toPlainText().toUtf8());
         hexEdit->blockSignals(false);
-        checkDataType();
+
+        // Update the cell data info in the bottom left of the Edit Cell
+        int dataType = checkDataType();
+        updateCellInfo(dataType);
     }
 }
 
@@ -190,49 +240,31 @@ void EditDialog::hexDataChanged()
     ui->editorText->blockSignals(false);
 }
 
-void EditDialog::checkDataType()
+// Determine the type of data in the cell
+int EditDialog::checkDataType()
 {
-    ui->comboEditor->setVisible(true);
+    QByteArray cellData = hexEdit->data();
 
-    // Assume NULL type first
-    if (hexEdit->data().isNull())
-        ui->labelType->setText(tr("Type of data currently in cell: Null"));
-
-    // Check if data is text only
-    if(QString(hexEdit->data()).toUtf8() == hexEdit->data())     // Any proper way??
-    {
-        ui->editorStack->setCurrentIndex(0);
-
-        ui->labelBinayWarning->setVisible(false);
-
-        if (!hexEdit->data().isNull())
-            ui->labelType->setText(tr("Type of data currently in cell: Text / Numeric"));
-
-        ui->labelSize->setText(tr("%n char(s)", "", hexEdit->data().length()));
-    } else {
-        // It's not. So it might be an image.
-        QImage img;
-        if(img.loadFromData(hexEdit->data()))
-        {
-            // It is.
-            ui->editorImage->setPixmap(QPixmap::fromImage(img));
-            ui->editorStack->setCurrentIndex(2);
-
-            ui->labelType->setText(tr("Type of data currently in cell: Image"));
-            ui->labelSize->setText(tr("%1x%2 pixel").arg(ui->editorImage->pixmap()->size().width()).arg(ui->editorImage->pixmap()->size().height()));
-
-            ui->comboEditor->setVisible(false);
-        } else {
-            // It's not. So it's probably some random binary data.
-
-            ui->labelBinayWarning->setVisible(true);
-
-            if (!hexEdit->data().isNull())
-                ui->labelType->setText(tr("Type of data currently in cell: Binary"));
-
-            ui->labelSize->setText(tr("%n byte(s)", "", hexEdit->data().length()));
-        }
+    // Check for NULL data type
+    if (cellData.isNull()) {
+        return Null;
     }
+
+    // Check if it's an image
+    QBuffer imageBuffer(&cellData);
+    QImageReader readerBuffer(&imageBuffer);
+    bool someCheck = readerBuffer.canRead();
+    if (someCheck == true) {
+        return Image;
+    }
+
+    // Check if it's text only
+    if (QString(cellData).toUtf8() == cellData) { // Is there a better way to check this?
+        return Text;
+    }
+
+    // It's none of the above, so treat it as general binary data
+    return Binary;
 }
 
 void EditDialog::toggleOverwriteMode()
@@ -248,19 +280,78 @@ void EditDialog::setFocus()
 {
     QDialog::setFocus();
 
-    // When in dock mode set the focus to the editor widget. The idea here is that setting focus to the
-    // dock itself doesn't make much sense as it's just a frame; you'd have to tab to the editor which is what you
-    // most likely want to use. So in order to save the user from doing this we explicitly set the focus to the editor.
-    if(useInDock)
-    {
-        ui->editorText->setFocus();
-        ui->editorText->selectAll();
+    // Set the focus to the editor widget. The idea here is that setting focus
+    // to the dock itself doesn't make much sense as it's just a frame; you'd
+    // have to tab to the editor which is what you most likely want to use. So
+    // in order to save the user from doing this we explicitly set the focus
+    // to the editor.
+    ui->editorText->setFocus();
+    ui->editorText->selectAll();
+}
+
+// Enables or disables the Apply, Null, & Import buttons in the Edit Cell dock
+void EditDialog::allowEditing(bool on)
+{
+    ui->buttonApply->setEnabled(on);
+    ui->buttonNull->setEnabled(on);
+    ui->buttonImport->setEnabled(on);
+}
+
+// Shows or hides the warning about editing binary data in text mode
+void EditDialog::updateBinaryEditWarning(int editMode, int dataType)
+{
+    // If we're in the text editor, and the data type is not plain text
+    // display a warning about editing it
+    if ((editMode == 0) && ((dataType != Text) && (dataType != Null))) {
+        // Display the warning
+        ui->labelBinaryWarning->setVisible(true);
+    } else {
+        // Hide the warning
+        ui->labelBinaryWarning->setVisible(false);
     }
 }
 
-void EditDialog::allowEditing(bool on)
+// Update the information labels in the bottom left corner of the dialog
+void EditDialog::updateCellInfo(int cellType)
 {
-    ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(on);
-    ui->buttonClear->setEnabled(on);
-    ui->buttomImport->setEnabled(on);
+    QByteArray cellData = hexEdit->data();
+
+    // Image data needs special treatment
+    if (cellType == Image) {
+        QBuffer imageBuffer(&cellData);
+        QImageReader image(&imageBuffer);
+
+        // Display the image format
+        QString imageFormat = image.format();
+        ui->labelType->setText(tr("Type of data currently in cell: %1 Image").arg(imageFormat.toUpper()));
+
+        // Display the image dimensions
+        QSize imageSize = image.size();
+        ui->labelSize->setText(tr("%1x%2 pixel(s)").arg(imageSize.width()).arg(imageSize.height()));
+        return;
+    }
+
+    // Determine the legth of the cell data
+    int dataLength = cellData.length();
+
+    // Use a switch statement for the other data types to keep things neat :)
+    switch (cellType) {
+    case Null:
+        // NULL data type
+        ui->labelType->setText(tr("Type of data currently in cell: NULL"));
+        ui->labelSize->setText(tr("%n byte(s)", "", dataLength));
+        break;
+
+    case Text:
+        // Text only
+        ui->labelType->setText(tr("Type of data currently in cell: Text / Numeric"));
+        ui->labelSize->setText(tr("%n char(s)", "", dataLength));
+        break;
+
+    default:
+        // If none of the above data types, consider it general binary data
+        ui->labelType->setText(tr("Type of data currently in cell: Binary"));
+        ui->labelSize->setText(tr("%n byte(s)", "", dataLength));
+        break;
+    }
 }

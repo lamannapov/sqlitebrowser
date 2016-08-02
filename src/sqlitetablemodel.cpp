@@ -289,7 +289,12 @@ sqlb::ForeignKeyClause SqliteTableModel::getForeignKeyClause(int column) const
 {
     DBBrowserObject obj = m_db->getObjectByName(m_sTable);
     if(obj.getname().size())
-        return obj.table.fields().at(column)->foreignKey();
+        if (column > 0 && column < obj.table.fields().count())
+        {
+            return obj.table.fields().at(column)->foreignKey();
+        } else {
+            return sqlb::ForeignKeyClause();
+        }
     else
         return sqlb::ForeignKeyClause();
 }
@@ -432,6 +437,26 @@ bool SqliteTableModel::removeRows(int row, int count, const QModelIndex& parent)
     return true;
 }
 
+QModelIndex SqliteTableModel::dittoRecord(int old_row)
+{
+    int firstEditedColumn = 0;
+    int new_row = rowCount() - 1;
+
+    sqlb::Table t = sqlb::Table::parseSQL(m_db->getObjectByName(m_sTable).getsql()).first;
+
+    for (int col = 0; col < t.fields().size(); ++col) {
+        if (!t.fields().at(col)->primaryKey()) {
+            if (!firstEditedColumn)
+                firstEditedColumn = col + 1;
+
+            QVariant value = data(index(old_row, col + 1), Qt::EditRole);
+            setData(index(new_row, col + 1), value);
+        }
+    }
+
+    return index(new_row, firstEditedColumn);
+}
+
 void SqliteTableModel::fetchData(unsigned int from, unsigned to)
 {
     int currentsize = m_data.size();
@@ -478,8 +503,12 @@ void SqliteTableModel::fetchData(unsigned int from, unsigned to)
     }
     sqlite3_finalize(stmt);
 
-    beginInsertRows(QModelIndex(), currentsize, m_data.size()-1);
-    endInsertRows();
+    // Check if there was any new data
+    if(m_data.size() > currentsize)
+    {
+        beginInsertRows(QModelIndex(), currentsize, m_data.size()-1);
+        endInsertRows();
+    }
 }
 
 void SqliteTableModel::buildQuery()

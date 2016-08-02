@@ -1,6 +1,7 @@
 # DB Browser for SQLite
 
 [![Build Status](https://travis-ci.org/sqlitebrowser/sqlitebrowser.svg?branch=master)](https://travis-ci.org/sqlitebrowser/sqlitebrowser)
+[![Join the chat at https://gitter.im/sqlitebrowser/sqlitebrowser](https://badges.gitter.im/sqlitebrowser/sqlitebrowser.svg)](https://gitter.im/sqlitebrowser/sqlitebrowser?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 ![DB Browser for SQLite Screenshot](https://github.com/sqlitebrowser/sqlitebrowser/raw/master/images/sqlitebrowser.png "DB Browser for SQLite Screenshot")
 
@@ -44,15 +45,25 @@ available at:
 
 * http://rp.oldsch00l.com/sqlitebrowser/
 
+**Note** - If for some reason the standard Windows release doesn't work for
+you (eg it gives an error), try the nightly build.  It's made using a
+different process, and is often a good fallback. :D
+
 ## MacOS X
 
 DB Browser for SQLite works well on MacOS X.
 
-* OSX 10.7 (Lion) - 10.10 (Yosemite) are tested and known to work
+* OSX 10.7 (Lion) - 10.11 (El Capitan) are tested and known to work
 
 OSX binaries can be downloaded from here:
 
 * https://github.com/sqlitebrowser/sqlitebrowser/releases
+
+Latest OSX binary can be installed via [Homebrew](http://brew.sh/ "Homebrew"):
+
+```
+brew cask install sqlitebrowser
+```
 
 Nightly builds for OSX are available at:
 
@@ -68,8 +79,7 @@ Arch Linux provides a package through pacman.
 
 ### Fedora
 
-For Fedora version 21, 22, 23 and rawhide (i386 and x86_64) you can install
-by issuing:
+For Fedora (i386 and x86_64) you can install by issuing:
 
     $ sudo dnf install sqlitebrowser
 

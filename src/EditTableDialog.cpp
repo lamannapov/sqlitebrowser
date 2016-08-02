@@ -1,4 +1,5 @@
 #include "EditTableDialog.h"
+#include "PreferencesDialog.h"
 #include "ui_EditTableDialog.h"
 #include "sqlitetablemodel.h"
 #include "sqlitedb.h"
@@ -453,6 +454,14 @@ void EditTableDialog::addField()
     typeBox->setProperty("column", tbitem->text(kName));
     typeBox->setEditable(true);
     typeBox->addItems(sqlb::Field::Datatypes);
+
+    int defaultFieldTypeIndex = PreferencesDialog::getSettingsValue("db", "defaultfieldtype").toInt();
+
+    if (defaultFieldTypeIndex < sqlb::Field::Datatypes.count())
+    {
+        typeBox->setCurrentIndex(defaultFieldTypeIndex);
+    }
+
     ui->treeWidget->setItemWidget(tbitem, kType, typeBox);
     connect(typeBox, SIGNAL(currentIndexChanged(int)), this, SLOT(updateTypes()));
     //connect(typeBox, SIGNAL(editTextChanged(QString)), this, SLOT(updateTypes()));
@@ -498,7 +507,7 @@ void EditTableDialog::removeField()
 
         // Ask user whether he really wants to delete that column
         QString msg = tr("Are you sure you want to delete the field '%1'?\nAll data currently stored in this field will be lost.").arg(ui->treeWidget->currentItem()->text(0));
-        if(QMessageBox::warning(this, QApplication::applicationName(), msg, QMessageBox::Yes | QMessageBox::Default, QMessageBox::No | QMessageBox::Escape) == QMessageBox::Yes)
+        if(QMessageBox::warning(this, QApplication::applicationName(), msg, QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
         {
             if(!pdb->renameColumn(curTable, ui->treeWidget->currentItem()->text(0), sqlb::FieldPtr()))
             {
