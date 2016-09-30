@@ -12,6 +12,7 @@ class EditDialog;
 class QIntValidator;
 class QLabel;
 class QModelIndex;
+class QPersistentModelIndex;
 class SqliteTableModel;
 class DbStructureModel;
 class QNetworkReply;
@@ -30,7 +31,7 @@ public:
     explicit MainWindow(QWidget* parent = 0);
     ~MainWindow();
 
-    DBBrowserDB* getDb() { return &db; }
+    DBBrowserDB& getDb() { return db; }
 
     struct BrowseDataTableSettings
     {
@@ -68,6 +69,14 @@ public:
 
             return stream;
         }
+    };
+
+    enum Tabs
+    {
+        StructureTab,
+        BrowseTab,
+        PragmaTab,
+        ExecuteTab
     };
 
 private:
@@ -145,6 +154,7 @@ protected:
     void dragEnterEvent(QDragEnterEvent *event);
     void dropEvent(QDropEvent *event);
     void resizeEvent(QResizeEvent *event);
+    void keyPressEvent(QKeyEvent* event);
 
 public slots:
     bool fileOpen(const QString& fileName = QString(), bool dontAddToRecentFiles = false);
@@ -153,14 +163,14 @@ public slots:
     void browseRefresh();
     void jumpToRow(const QString& table, QString column, const QByteArray& value);
     void switchToBrowseDataTab(QString tableToBrowse = QString());
+    void populateStructure();
 
 private slots:
     void createTreeContextMenu(const QPoint & qPoint);
     void changeTreeSelection();
     void fileNew();
-    void populateStructure();
-    void populateTable(QString tablename);
-    void resetBrowser(bool reloadTable = true);
+    void populateTable();
+    void clearTableBrowser();
     bool fileClose();
     void addRecord();
     void deleteRecord();
@@ -179,15 +189,18 @@ private slots:
     void editTable();
     void helpWhatsThis();
     void helpAbout();
-    void updateRecordText(int row, int col, bool type, const QByteArray& newtext);
-    void editDockAway();
+    void updateRecordText(const QPersistentModelIndex& idx, const QByteArray& text, bool isBlob);
+    void toggleEditDock(bool visible);
     void dataTableSelectionChanged(const QModelIndex& index);
     void doubleClickTable(const QModelIndex& index);
     void executeQuery();
     void importTableFromCSV();
     void exportTableToCSV();
+    void exportTableToJson();
     void fileSave();
     void fileRevert();
+    void on_actionOpen_Remote_triggered();
+    void on_actionSave_Remote_triggered();
     void exportDatabaseToSQL();
     void importDatabaseFromSQL();
     void openPreferences();
@@ -211,6 +224,7 @@ private slots:
     void on_butSavePlot_clicked();
     void on_actionWiki_triggered();
     void on_actionBug_report_triggered();
+    void on_actionSqlCipherFaq_triggered();
     void on_actionWebsite_triggered();
     void updateBrowseDataColumnWidth(int section, int /*old_size*/, int new_size);
     bool loadProject(QString filename = QString());

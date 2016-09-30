@@ -9,12 +9,47 @@
 #include <QVector>
 #include <QStringList>
 #include <QPair>
+#include <QMultiMap>
 
 namespace sqlb {
 
 QString escapeIdentifier(QString id);
 
-class ForeignKeyClause
+class Field;
+class Constraint;
+typedef QSharedPointer<Field> FieldPtr;
+typedef QSharedPointer<Constraint> ConstraintPtr;
+typedef QVector<FieldPtr> FieldVector;
+
+class Constraint
+{
+public:
+    enum ConstraintTypes
+    {
+        NoType,
+        PrimaryKeyConstraintType,
+        UniqueConstraintType,
+        ForeignKeyConstraintType,
+    };
+
+    Constraint(const QString& name = QString())
+        : m_name(name)
+    {
+    }
+    virtual ~Constraint() {}
+
+    virtual ConstraintTypes type() const = 0;
+
+    void setName(const QString& name) { m_name = name; }
+    const QString& name() const { return m_name; }
+
+    virtual QString toSql(const FieldVector& applyOn) const = 0;
+
+protected:
+    QString m_name;
+};
+
+class ForeignKeyClause : public Constraint
 {
 public:
     ForeignKeyClause(const QString& table = QString(), const QStringList& columns = QStringList(), const QString& constraint = QString())
@@ -38,12 +73,36 @@ public:
     void setConstraint(const QString& constraint) { m_constraint = constraint; }
     const QString& constraint() const { return m_constraint; }
 
+    virtual QString toSql(const FieldVector& applyOn) const;
+
+    virtual ConstraintTypes type() const { return ForeignKeyConstraintType; }
+
 private:
     QString m_table;
     QStringList m_columns;
     QString m_constraint;
 
     QString m_override;
+};
+
+class UniqueConstraint : public Constraint
+{
+public:
+    UniqueConstraint() {}
+
+    virtual QString toSql(const FieldVector& applyOn) const;
+
+    virtual ConstraintTypes type() const { return UniqueConstraintType; }
+};
+
+class PrimaryKeyConstraint : public Constraint
+{
+public:
+    PrimaryKeyConstraint() {}
+
+    virtual QString toSql(const FieldVector& applyOn) const;
+
+    virtual ConstraintTypes type() const { return PrimaryKeyConstraintType; }
 };
 
 class Field
@@ -54,7 +113,6 @@ public:
           bool notnull = false,
           const QString& defaultvalue = "",
           const QString& check = "",
-          bool pk = false,
           bool unique = false)
         : m_name(name)
         , m_type(type)
@@ -62,7 +120,6 @@ public:
         , m_check(check)
         , m_defaultvalue(defaultvalue)
         , m_autoincrement(false)
-        , m_primaryKey(pk)
         , m_unique(unique)
     {}
 
@@ -74,9 +131,7 @@ public:
     void setCheck(const QString& check) { m_check = check; }
     void setDefaultValue(const QString& defaultvalue) { m_defaultvalue = defaultvalue; }
     void setAutoIncrement(bool autoinc) { m_autoincrement = autoinc; }
-    void setPrimaryKey(bool pk) { m_primaryKey = pk; }
     void setUnique(bool u) { m_unique = u; }
-    void setForeignKey(const ForeignKeyClause& key) { m_foreignKey = key; }
 
     bool isText() const;
     bool isInteger() const;
@@ -87,9 +142,7 @@ public:
     const QString& check() const { return m_check; }
     const QString& defaultValue() const { return m_defaultvalue; }
     bool autoIncrement() const { return m_autoincrement; }
-    bool primaryKey() const { return m_primaryKey; }
     bool unique() const { return m_unique; }
-    const ForeignKeyClause& foreignKey() const { return m_foreignKey; }
 
     static QStringList Datatypes;
 private:
@@ -98,14 +151,19 @@ private:
     bool m_notnull;
     QString m_check;
     QString m_defaultvalue;
-    ForeignKeyClause m_foreignKey;   // Even though this information is a table constraint it's easier for accessing and processing to store it here
     bool m_autoincrement; //! this is stored here for simplification
-    bool m_primaryKey;
     bool m_unique;
 };
 
-typedef QSharedPointer<Field> FieldPtr;
-typedef QVector< FieldPtr > FieldVector;
+typedef QMultiMap<FieldVector, ConstraintPtr> ConstraintMap;
+
+#if QT_VERSION_MAJOR < 5
+inline bool operator<(const FieldVector&, const FieldVector&)
+{
+    return false;
+}
+#endif
+
 class Table
 {
 public:
@@ -126,12 +184,22 @@ public:
     void addField(const FieldPtr& f);
     bool removeField(const QString& sFieldName);
     void setFields(const FieldVector& fields);
-    void setField(int index, FieldPtr f) { m_fields[index] = f; }
+    void setField(int index, FieldPtr f);
+    const FieldPtr& field(int index) { return m_fields[index]; }
     QStringList fieldNames() const;
     void setRowidColumn(const QString& rowid) {  m_rowidColumn = rowid; }
     const QString& rowidColumn() const { return m_rowidColumn; }
     bool isWithoutRowidTable() const { return m_rowidColumn != "_rowid_"; }
     void clear();
+
+    void addConstraint(FieldPtr field, ConstraintPtr constraint);
+    void addConstraint(FieldVector fields, ConstraintPtr constraint);
+    ConstraintPtr constraint(FieldPtr field, Constraint::ConstraintTypes type = Constraint::NoType) const;   //! Only returns the first constraint, if any
+    ConstraintPtr constraint(FieldVector fields = FieldVector(), Constraint::ConstraintTypes type = Constraint::NoType) const;   //! Only returns the first constraint, if any
+    QList<ConstraintPtr> constraints(FieldPtr field, Constraint::ConstraintTypes type = Constraint::NoType) const;
+    QList<ConstraintPtr> constraints(FieldVector fields = FieldVector(), Constraint::ConstraintTypes type = Constraint::NoType) const;
+    FieldVector& primaryKeyRef();
+    const FieldVector& primaryKey() const;
 
     /**
      * @brief findField Finds a field and returns the index.
@@ -139,7 +207,7 @@ public:
      * @return The field index if the field was found.
      *         -1 if field couldn't be found.
      */
-    int findField(const QString& sname);
+    int findField(const QString& sname) const;
 
     int findPk() const;
 
@@ -159,6 +227,7 @@ private:
     QString m_name;
     FieldVector m_fields;
     QString m_rowidColumn;
+    ConstraintMap m_constraints;
 };
 
 /**
@@ -178,12 +247,14 @@ public:
     bool modifysupported() const { return m_bModifySupported; }
 
 private:
-    void parsecolumn(FieldPtr& f, antlr::RefAST c);
+    void parsecolumn(Table& table, antlr::RefAST c);
 
 private:
     antlr::RefAST m_root;
     bool m_bModifySupported;
 };
+
+QStringList fieldVectorToFieldNames(const sqlb::FieldVector& vector);
 
 } //namespace sqlb
 

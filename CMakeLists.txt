@@ -10,20 +10,39 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
 endif()
 
+add_definitions(-std=c++11)
+
 if(WIN32 AND MSVC)
 	if(CMAKE_CL_64)
-		set(SQLITE3_PATH "C:/dev/SQLite")
-		set(QT5_PATH "C:/dev/Qt/5.6/msvc2013_64")
+		# Paths for 64-bit windows builds
 		set(OPENSSL_PATH "C:/dev/OpenSSL-Win64")
+		set(QT5_PATH "C:/dev/Qt/5.7/msvc2013_64")
 		set(VSREDIST "vcredist_x64.exe")
+
+                # Choose between SQLCipher or SQLite, depending whether
+                # -Dsqlcipher=1 is passed on the command line
+                if(sqlcipher)
+                        set(SQLITE3_PATH "C:/git_repos/sqlcipher")
+                else()
+                        set(SQLITE3_PATH "C:/dev/SQLite-Win64")
+                endif()
 	else()
-		set(QT5_PATH "E:/Qt/Qt5.5.1/5.5/msvc2013")
-		set(SQLITE3_PATH "E:/libs/sqlite3")
-		set(OPENSSL_PATH "E:/libs/openssl-1.0.2a-i386-win32")
+		# Paths for 32-bit windows builds
+		set(OPENSSL_PATH "C:/dev/OpenSSL-Win32")
+		set(QT5_PATH "C:/dev/Qt/5.7/msvc2013")
 		set(VSREDIST "vcredist_x86.exe")
+
+                # Choose between SQLCipher or SQLite, depending whether
+                # -Dsqlcipher=1 is passed on the command line
+                if(sqlcipher)
+                        set(SQLITE3_PATH "C:/git_repos/sqlcipher")
+                else()
+                        set(SQLITE3_PATH "C:/dev/SQLite-Win32")
+                endif()
 	endif()
-	set(USE_QT5 TRUE)
 	set(CMAKE_PREFIX_PATH "${QT5_PATH};${SQLITE3_PATH}")
+	set(USE_QT5 TRUE)
+	set(VSREDIST_DIR "C:/dev/dependencies")
 endif()
 
 find_package(Antlr2)
@@ -71,11 +90,12 @@ set(SQLB_MOC_HDR
 	src/CreateIndexDialog.h
 	src/EditDialog.h
 	src/EditTableDialog.h
-	src/ExportCsvDialog.h
+	src/ExportDataDialog.h
 	src/ExtendedTableWidget.h
 	src/FilterTableHeader.h
 	src/ImportCsvDialog.h
 	src/MainWindow.h
+	src/Settings.h
 	src/PreferencesDialog.h
 	src/SqlExecutionArea.h
 	src/VacuumDialog.h
@@ -96,11 +116,12 @@ set(SQLB_SRC
 	src/CreateIndexDialog.cpp
 	src/EditDialog.cpp
 	src/EditTableDialog.cpp
-	src/ExportCsvDialog.cpp
+	src/ExportDataDialog.cpp
 	src/ExtendedTableWidget.cpp
 	src/FilterTableHeader.cpp
 	src/ImportCsvDialog.cpp
 	src/MainWindow.cpp
+	src/Settings.cpp
 	src/PreferencesDialog.cpp
 	src/SqlExecutionArea.cpp
 	src/VacuumDialog.cpp
@@ -127,7 +148,7 @@ set(SQLB_FORMS
 	src/CreateIndexDialog.ui
 	src/EditDialog.ui
 	src/EditTableDialog.ui
-	src/ExportCsvDialog.ui
+	src/ExportDataDialog.ui
 	src/ImportCsvDialog.ui
 	src/MainWindow.ui
 	src/PreferencesDialog.ui
@@ -150,7 +171,7 @@ set(SQLB_MISC
 
 # Translation files
 set(SQLB_TSS
-	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_ar.ts"
+	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_ar_SA.ts"
 	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_zh.ts"
 	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_zh_TW.ts"
 	"${CMAKE_SOURCE_DIR}/src/translations/sqlb_de.ts"
@@ -186,7 +207,6 @@ else()
     QT4_ADD_RESOURCES(SQLB_RESOURCES_RCC ${SQLB_RESOURCES})
 endif()
 
-
 #icon and correct libs/subsystem for windows
 if(WIN32)
         #enable version check for windows
@@ -220,7 +240,7 @@ endif(sqlcipher)
 
 # add extra library path for MacOS and FreeBSD
 set(EXTRAPATH APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
-if(EXTRAPATH) 
+if(EXTRAPATH)
 	find_library(LIBSQLITE ${LIBSQLITE_NAME} HINTS /usr/local/lib /usr/local/opt/sqlite/lib)
 	set(ADDITIONAL_INCLUDE_PATHS /usr/local/include /usr/local/opt/sqlite/include)
 else(EXTRAPATH)
@@ -229,7 +249,11 @@ endif(EXTRAPATH)
 
 if(WIN32 AND MSVC)
 	find_path(SQLITE3_INCLUDE_DIR sqlite3.h)
-	find_file(SQLITE3_DLL sqlite3.dll)
+	if(sqlcipher)
+		find_file(SQLITE3_DLL sqlcipher.dll)
+	else(sqlcipher)
+		find_file(SQLITE3_DLL sqlite3.dll)
+	endif(sqlcipher)
 	include_directories(${SQLITE3_INCLUDE_DIR})
 endif()
 
@@ -296,9 +320,11 @@ if(WIN32 AND MSVC)
 	set(CMAKE_GENERATOR_TOOLSET "v120_xp" CACHE STRING "Platform Toolset" FORCE)
 endif()
 
+if(NOT WIN32)
 install(TARGETS ${PROJECT_NAME}
 	RUNTIME DESTINATION bin
 	LIBRARY DESTINATION lib)
+endif()
 	
 
 if(ENABLE_TESTING)
@@ -317,6 +343,10 @@ if(UNIX AND NOT APPLE)
 endif(UNIX AND NOT APPLE)
 
 if(WIN32 AND MSVC)
+	install(TARGETS ${PROJECT_NAME}
+		RUNTIME DESTINATION "/"
+		LIBRARY DESTINATION lib)
+
 	set(QT5_BIN_PATH ${QT5_PATH}/bin)
 	# The Qt5 Debug configuration library files have a 'd' postfix
 	install(FILES
@@ -325,7 +355,7 @@ if(WIN32 AND MSVC)
 			${QT5_BIN_PATH}/Qt5Networkd.dll
 			${QT5_BIN_PATH}/Qt5PrintSupportd.dll
 			${QT5_BIN_PATH}/Qt5Widgetsd.dll
-		DESTINATION bin
+		DESTINATION "/"
 		CONFIGURATIONS Debug)
 	# The Qt5 Release configuration files don't have a postfix
 	install(FILES
@@ -334,53 +364,53 @@ if(WIN32 AND MSVC)
 			${QT5_BIN_PATH}/Qt5Network.dll
 			${QT5_BIN_PATH}/Qt5PrintSupport.dll
 			${QT5_BIN_PATH}/Qt5Widgets.dll
-		DESTINATION bin
+		DESTINATION "/"
 		CONFIGURATIONS Release)
 	# The files below are common to all configurations
 	install(FILES
-			${QT5_BIN_PATH}/icudt54.dll
-			${QT5_BIN_PATH}/icuin54.dll
-			${QT5_BIN_PATH}/icuuc54.dll
 			${SQLITE3_DLL}
 			${OPENSSL_PATH}/libeay32.dll
 			${OPENSSL_PATH}/ssleay32.dll
-		DESTINATION bin)
+		DESTINATION "/")
 	install(FILES
 		${QT5_PATH}/plugins/platforms/qwindows.dll
-		DESTINATION bin/platforms)
-	install(PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/deps/${VSREDIST} DESTINATION tmp)
+		DESTINATION platforms)
+	install(PROGRAMS "${VSREDIST_DIR}/${VSREDIST}" DESTINATION redist)
 endif()
 
 #cpack
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "DB Browser for SQLite")
-set(CPACK_PACKAGE_VENDOR "oldsch00l")
+set(CPACK_PACKAGE_VENDOR "DB Browser for SQLite Team")
 set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 set(CPACK_PACKAGE_VERSION_MAJOR "3")
-set(CPACK_PACKAGE_VERSION_MINOR "8")
-set(CPACK_PACKAGE_VERSION_PATCH "0")
-set(CPACK_PACKAGE_INSTALL_DIRECTORY "SqliteBrowser${CPACK_PACKAGE_VERSION_MAJOR}")
+set(CPACK_PACKAGE_VERSION_MINOR "9")
+set(CPACK_PACKAGE_VERSION_PATCH "99")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "DB Browser for SQLite")
 if(WIN32 AND NOT UNIX)
-	# There is a bug in NSI that does not handle full unix paths properly. Make
+	# There is a bug in NSIS that does not handle full unix paths properly. Make
 	# sure there is at least one set of four (4) backlasshes.
 	set(CPACK_PACKAGE_ICON "${CMAKE_CURRENT_SOURCE_DIR}\\\\src\\\\iconwin.ico")
-	set(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\sqlitebrowser.exe")
+        set(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}\\\\src\\\\iconwin.ico")
+	set(CPACK_NSIS_EXECUTABLES_DIRECTORY "/")
+	set(CPACK_NSIS_INSTALLED_ICON_NAME "DB Browser for SQLite.exe")
 	set(CPACK_NSIS_DISPLAY_NAME "DB Browser for SQLite")
 	set(CPACK_NSIS_HELP_LINK "https:\\\\\\\\github.com\\\\sqlitebrowser\\\\sqlitebrowser")
 	set(CPACK_NSIS_URL_INFO_ABOUT "https:\\\\\\\\github.com\\\\sqlitebrowser\\\\sqlitebrowser")
-	set(CPACK_NSIS_CONTACT "peinthor@gmail.com")
+	set(CPACK_NSIS_CONTACT "justin@postgresql.org")
 	set(CPACK_NSIS_MODIFY_PATH OFF)
 	set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
-	set(CPACK_NSIS_MUI_FINISHPAGE_RUN "sqlitebrowser.exe")
+	set(CPACK_NSIS_MUI_FINISHPAGE_RUN "DB Browser for SQLite.exe")
+	set(CPACK_NSIS_COMPRESSOR "/SOLID lzma")
 
 	# VS redist
 	list(APPEND CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
-               ExecWait '\\\"$INSTDIR\\\\tmp\\\\${VSREDIST}\\\" /install /passive /quiet'
-               Delete '\\\"$INSTDIR\\\\tmp\\\\${VSREDIST}\\\"'
+               ExecWait '\\\"$INSTDIR\\\\redist\\\\${VSREDIST}\\\" /install /passive /quiet'
+               Delete '\\\"$INSTDIR\\\\redist\\\\${VSREDIST}\\\"'
                ")
 else(WIN32 AND NOT UNIX)
-	set(CPACK_STRIP_FILES "bin/sqlitebrowser")
+	set(CPACK_STRIP_FILES "DB Browser for SQLite")
 	set(CPACK_SOURCE_STRIP_FILES "")
 endif(WIN32 AND NOT UNIX)
-set(CPACK_PACKAGE_EXECUTABLES "sqlitebrowser" "SqliteBrowser")
+set(CPACK_PACKAGE_EXECUTABLES "DB Browser for SQLite" "DB Browser for SQLite")
 include(CPack)

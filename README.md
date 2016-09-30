@@ -1,7 +1,8 @@
 # DB Browser for SQLite
 
-[![Build Status](https://travis-ci.org/sqlitebrowser/sqlitebrowser.svg?branch=master)](https://travis-ci.org/sqlitebrowser/sqlitebrowser)
-[![Join the chat at https://gitter.im/sqlitebrowser/sqlitebrowser](https://badges.gitter.im/sqlitebrowser/sqlitebrowser.svg)](https://gitter.im/sqlitebrowser/sqlitebrowser?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[![Build Status][travis-img]][travis]
+[![Join the chat at https://gitter.im/sqlitebrowser/sqlitebrowser][gitter-img]][gitter]
+[![Download][download-img]][download]
 
 ![DB Browser for SQLite Screenshot](https://github.com/sqlitebrowser/sqlitebrowser/raw/master/images/sqlitebrowser.png "DB Browser for SQLite Screenshot")
 
@@ -53,13 +54,13 @@ different process, and is often a good fallback. :D
 
 DB Browser for SQLite works well on MacOS X.
 
-* OSX 10.7 (Lion) - 10.11 (El Capitan) are tested and known to work
+* OSX 10.8 (Mountain Lion) - 10.11 (El Capitan) are tested and known to work
 
 OSX binaries can be downloaded from here:
 
 * https://github.com/sqlitebrowser/sqlitebrowser/releases
 
-Latest OSX binary can be installed via [Homebrew](http://brew.sh/ "Homebrew"):
+Latest OSX binary can be installed via [Homebrew Cask](https://caskroom.github.io/ "Homebrew Cask"):
 
 ```
 brew cask install sqlitebrowser
@@ -167,6 +168,7 @@ Follow us on Twitter: https://twitter.com/sqlitebrowser
 
 ## Releases
 
+* [Version 3.9.0 released](https://github.com/sqlitebrowser/sqlitebrowser/releases/tag/v3.9.0) - 2016-08-24
 * [Version 3.8.0 released](https://github.com/sqlitebrowser/sqlitebrowser/releases/tag/v3.8.0) - 2015-12-25
 * [Version 3.7.0 released](https://github.com/sqlitebrowser/sqlitebrowser/releases/tag/v3.7.0) - 2015-06-14
 * [Version 3.6.0 released](https://github.com/sqlitebrowser/sqlitebrowser/releases/tag/v3.6.0) - 2015-04-27
@@ -223,9 +225,22 @@ support issues.
 In September 2014, the project was renamed to "DB Browser for SQLite", to
 avoid confusion with an existing application called "Database Browser".
 
+## Contributors
+
+You can see the list by going to the [__Contributors__ tab](https://github.com/sqlitebrowser/sqlitebrowser/graphs/contributors).
+
 ## License
 
 DB Browser for SQLite is bi-licensed under the Mozilla Public License
 Version 2, as well as the GNU General Public License Version 3 or later.
 
 You can modify or redistribute it under the conditions of these licenses.
+
+  [travis-img]: https://travis-ci.org/sqlitebrowser/sqlitebrowser.svg?branch=master
+  [travis]: https://travis-ci.org/sqlitebrowser/sqlitebrowser
+
+  [gitter-img]: https://badges.gitter.im/sqlitebrowser/sqlitebrowser.svg
+  [gitter]: https://gitter.im/sqlitebrowser/sqlitebrowser?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
+
+  [download-img]: https://img.shields.io/github/downloads/sqlitebrowser/sqlitebrowser/total.svg
+  [download]: https://github.com/sqlitebrowser/sqlitebrowser/releases

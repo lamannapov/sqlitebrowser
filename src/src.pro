@@ -9,6 +9,8 @@ CONFIG += debug_and_release
 CONFIG += qt
 CONFIG += warn_on
 
+QMAKE_CXXFLAGS += -std=c++11
+
 # create a unittest option
 CONFIG(unittest) {
   greaterThan(QT_MAJOR_VERSION, 4) {
@@ -29,9 +31,10 @@ HEADERS += \
     CreateIndexDialog.h \
     AboutDialog.h \
     EditTableDialog.h \
+    Settings.h \
     PreferencesDialog.h \
     EditDialog.h \
-    ExportCsvDialog.h \
+    ExportDataDialog.h \
     ImportCsvDialog.h \
     sqltextedit.h \
     sqlitetypes.h \
@@ -60,10 +63,11 @@ SOURCES += \
     MainWindow.cpp \
     CreateIndexDialog.cpp \
     EditTableDialog.cpp \
+    Settings.cpp \
     PreferencesDialog.cpp \
     AboutDialog.cpp \
     EditDialog.cpp \
-    ExportCsvDialog.cpp \
+    ExportDataDialog.cpp \
     ImportCsvDialog.cpp \
     sqltextedit.cpp \
     sqlitetypes.cpp \
@@ -95,7 +99,7 @@ FORMS += \
     EditTableDialog.ui \
     PreferencesDialog.ui \
     EditDialog.ui \
-    ExportCsvDialog.ui \
+    ExportDataDialog.ui \
     ImportCsvDialog.ui \
     SqlExecutionArea.ui \
     VacuumDialog.ui \
@@ -104,7 +108,7 @@ FORMS += \
     ColumnDisplayFormatDialog.ui
 
 TRANSLATIONS += \
-    translations/sqlb_ar.ts \
+    translations/sqlb_ar_SA.ts \
     translations/sqlb_zh.ts \
     translations/sqlb_zh_TW.ts \
     translations/sqlb_de.ts \

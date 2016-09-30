@@ -26,7 +26,7 @@
       </property>
       <widget class="QWidget" name="structure">
        <attribute name="title">
-        <string>Database &amp;Structure</string>
+        <string>Database Structure</string>
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout">
         <item>
@@ -38,6 +38,7 @@
            <enum>Qt::ToolButtonTextBesideIcon</enum>
           </property>
           <addaction name="editCreateTableAction"/>
+          <addaction name="editCreateIndexAction"/>
           <addaction name="editModifyTableAction"/>
           <addaction name="editDeleteObjectAction"/>
          </widget>
@@ -68,7 +69,7 @@
       </widget>
       <widget class="QWidget" name="browser">
        <attribute name="title">
-        <string>&amp;Browse Data</string>
+        <string>Browse Data</string>
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_2">
         <item>
@@ -197,6 +198,9 @@
           <property name="defaultDropAction">
            <enum>Qt::CopyAction</enum>
           </property>
+          <property name="selectionMode">
+           <enum>QAbstractItemView::ContiguousSelection</enum>
+          </property>
           <attribute name="horizontalHeaderShowSortIndicator" stdset="0">
            <bool>true</bool>
           </attribute>
@@ -320,7 +324,7 @@
       </widget>
       <widget class="QWidget" name="pragmas">
        <attribute name="title">
-        <string>Edit &amp;Pragmas</string>
+        <string>Edit Pragmas</string>
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_4">
         <item>
@@ -333,8 +337,8 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>552</width>
-             <height>423</height>
+             <width>473</width>
+             <height>558</height>
             </rect>
            </property>
            <layout class="QFormLayout" name="formLayout">
@@ -778,7 +782,7 @@
       </widget>
       <widget class="QWidget" name="query">
        <attribute name="title">
-        <string>E&amp;xecute SQL</string>
+        <string>Execute SQL</string>
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_3">
         <item>
@@ -819,7 +823,7 @@
      <x>0</x>
      <y>0</y>
      <width>1037</width>
-     <height>21</height>
+     <height>29</height>
     </rect>
    </property>
    <widget class="QMenu" name="fileMenu">
@@ -839,11 +843,21 @@
      </property>
      <addaction name="fileExportSQLAction"/>
      <addaction name="fileExportCSVAction"/>
+     <addaction name="fileExportJsonAction"/>
+    </widget>
+    <widget class="QMenu" name="menuRemote">
+     <property name="title">
+      <string>Remote</string>
+     </property>
+     <addaction name="actionOpen_Remote"/>
+     <addaction name="actionSave_Remote"/>
     </widget>
     <addaction name="fileNewAction"/>
     <addaction name="fileOpenAction"/>
     <addaction name="fileAttachAction"/>
     <addaction name="fileCloseAction"/>
+    <addaction name="separator"/>
+    <addaction name="menuRemote"/>
     <addaction name="separator"/>
     <addaction name="fileSaveAction"/>
     <addaction name="fileRevertAction"/>
@@ -884,6 +898,7 @@
     <addaction name="helpWhatsThisAction"/>
     <addaction name="actionWebsite"/>
     <addaction name="actionWiki"/>
+    <addaction name="actionSqlCipherFaq"/>
     <addaction name="actionBug_report"/>
     <addaction name="helpAboutAction"/>
    </widget>
@@ -914,7 +929,7 @@
   </widget>
   <widget class="QDockWidget" name="dockEdit">
    <property name="windowTitle">
-    <string>Edit Database Cell</string>
+    <string>Edit Database &amp;Cell</string>
    </property>
    <attribute name="dockWidgetArea">
     <number>2</number>
@@ -1301,7 +1316,7 @@
   </widget>
   <widget class="QDockWidget" name="dockSchema">
    <property name="windowTitle">
-    <string>DB Schema</string>
+    <string>DB Sche&amp;ma</string>
    </property>
    <attribute name="dockWidgetArea">
     <number>2</number>
@@ -1344,6 +1359,9 @@
    <property name="shortcut">
     <string>Ctrl+N</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
   </action>
   <action name="fileOpenAction">
    <property name="icon">
@@ -1365,6 +1383,9 @@
    <property name="shortcut">
     <string>Ctrl+O</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
   </action>
   <action name="fileCloseAction">
    <property name="enabled">
@@ -1375,6 +1396,9 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+W</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
    </property>
   </action>
   <action name="fileRevertAction">
@@ -1393,6 +1417,9 @@
    </property>
    <property name="whatsThis">
     <string>This option is used to revert the current database file to its last saved state. All changes made since the last save operation are lost.</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
    </property>
   </action>
   <action name="fileSaveAction">
@@ -1415,6 +1442,9 @@
    <property name="shortcut">
     <string>Ctrl+S</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
   </action>
   <action name="fileCompactAction">
    <property name="enabled">
@@ -1431,6 +1461,9 @@
    </property>
    <property name="whatsThis">
     <string>Compact the database file, removing space wasted by deleted records.</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
    </property>
   </action>
   <action name="fileExitAction">
@@ -1454,6 +1487,9 @@
    <property name="whatsThis">
     <string>This option lets you import data from an .sql dump text file into a new or existing database. SQL dump files can be created on most database engines, including MySQL and PostgreSQL.</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
   </action>
   <action name="fileImportCSVAction">
    <property name="text">
@@ -1464,6 +1500,9 @@
    </property>
    <property name="whatsThis">
     <string>Open a wizard that lets you import data from a comma separated text file into a database table. CSV files can be created on most database and spreadsheet applications.</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
    </property>
   </action>
   <action name="fileExportSQLAction">
@@ -1476,6 +1515,9 @@
    <property name="whatsThis">
     <string>This option lets you export a database to a .sql dump text file. SQL dump files contain all data necessary to recreate the database on most database engines, including MySQL and PostgreSQL.</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
   </action>
   <action name="fileExportCSVAction">
    <property name="text">
@@ -1486,6 +1528,9 @@
    </property>
    <property name="whatsThis">
     <string>Export a database table as a comma separated text file, ready to be imported into other database or spreadsheet applications.</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
    </property>
   </action>
   <action name="editCreateTableAction">
@@ -1501,6 +1546,9 @@
    </property>
    <property name="whatsThis">
     <string>Open the Create Table wizard, where it is possible to define the name and fields for a new table in the database</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
    </property>
   </action>
   <action name="editDeleteObjectAction">
@@ -1520,6 +1568,9 @@
    <property name="whatsThis">
     <string>Open the Delete Table wizard, where you can select a database table to be dropped.</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
   </action>
   <action name="editModifyTableAction">
    <property name="enabled">
@@ -1535,6 +1586,9 @@
    <property name="whatsThis">
     <string>Open the Modify Table wizard, where it is possible to rename an existing table. It is also possible to add or delete fields form a table, as well as modify field names and types.</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
   </action>
   <action name="editCreateIndexAction">
    <property name="enabled">
@@ -1549,6 +1603,9 @@
    </property>
    <property name="whatsThis">
     <string>Open the Create Index wizard, where it is possible to define a new index on an existing database table.</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
    </property>
   </action>
   <action name="viewPreferencesAction">
@@ -1586,6 +1643,9 @@
    <property name="shortcut">
     <string>Ctrl+T</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
   </action>
   <action name="helpWhatsThisAction">
    <property name="icon">
@@ -1593,10 +1653,13 @@
      <normaloff>:/icons/whatis</normaloff>:/icons/whatis</iconset>
    </property>
    <property name="text">
-    <string>W&amp;hat&apos;s This?</string>
+    <string>W&amp;hat's This?</string>
    </property>
    <property name="shortcut">
     <string>Shift+F1</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
    </property>
   </action>
   <action name="helpAboutAction">
@@ -1668,6 +1731,9 @@
    <property name="text">
     <string>&amp;Load extension</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
   </action>
   <action name="actionSqlExecuteLine">
    <property name="icon">
@@ -1678,10 +1744,10 @@
     <string>Execute current line</string>
    </property>
    <property name="toolTip">
-    <string>Execute current line [Ctrl+E]</string>
+    <string>Execute current line [Shift+F5]</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+E</string>
+    <string>Shift+F5</string>
    </property>
   </action>
   <action name="actionExportCsvPopup">
@@ -1703,6 +1769,9 @@
    <property name="text">
     <string>&amp;Wiki...</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
   </action>
   <action name="actionBug_report">
    <property name="icon">
@@ -1712,6 +1781,9 @@
    <property name="text">
     <string>Bug &amp;report...</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
   </action>
   <action name="actionWebsite">
    <property name="icon">
@@ -1720,6 +1792,9 @@
    </property>
    <property name="text">
     <string>Web&amp;site...</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
    </property>
   </action>
   <action name="actionSaveProject">
@@ -1736,6 +1811,9 @@
    <property name="statusTip">
     <string>Save the current session to a file</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
   </action>
   <action name="actionOpenProject">
    <property name="icon">
@@ -1751,6 +1829,9 @@
    <property name="statusTip">
     <string>Load a working session from a file</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
   </action>
   <action name="fileAttachAction">
    <property name="enabled">
@@ -1758,6 +1839,9 @@
    </property>
    <property name="text">
     <string>&amp;Attach Database</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
    </property>
   </action>
   <action name="actionEncryption">
@@ -1767,6 +1851,9 @@
    </property>
    <property name="text">
     <string>&amp;Set Encryption</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
    </property>
   </action>
   <action name="actionSqlSaveFileAs">
@@ -1855,6 +1942,39 @@
    </property>
    <property name="toolTip">
     <string>Duplicate record</string>
+   </property>
+  </action>
+  <action name="actionSqlCipherFaq">
+   <property name="icon">
+    <iconset resource="icons/icons.qrc">
+     <normaloff>:/icons/browser_open</normaloff>:/icons/browser_open</iconset>
+   </property>
+   <property name="text">
+    <string>SQLCipher &amp;FAQ...</string>
+   </property>
+   <property name="toolTip">
+    <string>Opens the SQLCipher FAQ in a browser window</string>
+   </property>
+  </action>
+  <action name="fileExportJsonAction">
+   <property name="text">
+    <string>Table(s) to JSON...</string>
+   </property>
+   <property name="toolTip">
+    <string>Export one or more table(s) to a JSON file</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionOpen_Remote">
+   <property name="text">
+    <string>Open from Remote</string>
+   </property>
+  </action>
+  <action name="actionSave_Remote">
+   <property name="text">
+    <string>Save to Remote</string>
    </property>
   </action>
  </widget>
@@ -1995,7 +2115,7 @@
    <sender>comboBrowseTable</sender>
    <signal>activated(QString)</signal>
    <receiver>MainWindow</receiver>
-   <slot>populateTable(QString)</slot>
+   <slot>populateTable()</slot>
    <hints>
     <hint type="sourcelabel">
      <x>118</x>
@@ -2887,11 +3007,27 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>fileExportJsonAction</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>exportTableToJson()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>518</x>
+     <y>314</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>fileOpen()</slot>
   <slot>fileClose()</slot>
-  <slot>populateTable(QString)</slot>
+  <slot>populateTable()</slot>
   <slot>addRecord()</slot>
   <slot>deleteRecord()</slot>
   <slot>navigatePrevious()</slot>
@@ -2949,5 +3085,6 @@
   <slot>browseDataSetDefaultTableEncoding()</slot>
   <slot>browseDataFetchAllData()</slot>
   <slot>dittoRecord()</slot>
+  <slot>exportTableToJson()</slot>
  </slots>
 </ui>

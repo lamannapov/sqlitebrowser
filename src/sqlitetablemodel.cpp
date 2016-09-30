@@ -1,8 +1,8 @@
 #include "sqlitetablemodel.h"
 #include "sqlitedb.h"
 #include "sqlite.h"
+#include "Settings.h"
 
-#include "PreferencesDialog.h"
 #include <QDebug>
 #include <QMessageBox>
 #include <QApplication>
@@ -89,39 +89,6 @@ QString rtrimChar(const QString& s, QChar c) {
         r.chop(1);
     return r;
 }
-
-QString removeComments(QString s)
-{
-    // Feel free to fix all the bugs this probably contains or just replace this function entirely by
-    // a 'simple' regular expression. I know there're better ways to do this...
-
-    // This function removes any single line comments (starting with '--') from a given string. It does
-    // so by going through the string character by character and trying to keep track of whether we currently
-    // are in a string or identifier and only removing those parts starting with '--' which are in neither.
-
-    QChar lastChar = 0;
-    QList<QChar> stringChars;
-    for(int i=0; i < s.length(); ++i)
-    {
-        if(lastChar != '\\' && (s.at(i) == '\'' || s.at(i) == '"' || s.at(i) == '`'))
-        {
-            if(!stringChars.empty() && stringChars.last() == s.at(i))
-                stringChars.removeLast();
-            else if(!(!stringChars.empty() && (stringChars.last() != '\'' || stringChars.last() != '"')) || stringChars.empty())
-                stringChars.push_back(s.at(i));
-        } else if(stringChars.empty() && s.at(i) == '-' && lastChar == '-') {
-            int nextNL = s.indexOf('\n', i);
-            if(nextNL >= 0)
-                return removeComments(s.remove(i-1, nextNL - i + 2));
-            else
-                return s.left(i-1);
-        }
-
-        lastChar = s.at(i);
-    }
-
-    return s;
-}
 }
 
 void SqliteTableModel::setQuery(const QString& sQuery, bool dontClearHeaders)
@@ -133,7 +100,9 @@ void SqliteTableModel::setQuery(const QString& sQuery, bool dontClearHeaders)
     if(!m_db->isOpen())
         return;
 
-    m_sQuery = removeComments(sQuery).trimmed();
+    m_sQuery = sQuery.trimmed();
+
+    m_sQuery.remove(QRegExp("(?=\\s*[-]{2})[^'\"\n]*($|\\n)"));
 
     // do a count query to get the full row count in a fast manner
     m_rowCount = getQueryRowCount();
@@ -251,29 +220,40 @@ QVariant SqliteTableModel::data(const QModelIndex &index, int role) const
         while(index.row() >= m_data.size() && canFetchMore())
             const_cast<SqliteTableModel*>(this)->fetchMore();   // Nothing evil to see here, move along
 
-        if(role == Qt::DisplayRole && m_data.at(index.row()).at(index.column()).left(1024).contains('\0'))
+        if(role == Qt::DisplayRole && m_data.at(index.row()).at(index.column()).isNull())
+        {
+            return Settings::getSettingsValue("databrowser", "null_text").toString();
+        } else if(role == Qt::DisplayRole && isBinary(index)) {
             return "BLOB";
-        else if(role == Qt::DisplayRole && m_data.at(index.row()).at(index.column()).isNull())
-            return PreferencesDialog::getSettingsValue("databrowser", "null_text").toString();
-        else
+        } else if(role == Qt::DisplayRole) {
+            int limit = Settings::getSettingsValue("databrowser", "symbol_limit").toInt();
+            QByteArray displayText = m_data.at(index.row()).at(index.column());
+            if (displayText.length() > limit) {
+                // Add "..." to the end of truncated strings
+                return decode(displayText.left(limit).append(" ..."));
+            } else {
+                return decode(displayText);
+            }
+        } else {
             return decode(m_data.at(index.row()).at(index.column()));
+        }
     } else if(role == Qt::FontRole) {
         QFont font;
         if(m_data.at(index.row()).at(index.column()).isNull() || isBinary(index))
             font.setItalic(true);
         return font;
-    } else if(role == Qt::TextColorRole) {
+    } else if(role == Qt::ForegroundRole) {
         if(m_data.at(index.row()).at(index.column()).isNull())
-            return QColor(PreferencesDialog::getSettingsValue("databrowser", "null_fg_colour").toString());
+            return QColor(Settings::getSettingsValue("databrowser", "null_fg_colour").toString());
         else if (isBinary(index))
-            return QColor(PreferencesDialog::getSettingsValue("databrowser", "bin_fg_colour").toString());
-        return QColor(PreferencesDialog::getSettingsValue("databrowser", "reg_fg_colour").toString());
+            return QColor(Settings::getSettingsValue("databrowser", "bin_fg_colour").toString());
+        return QColor(Settings::getSettingsValue("databrowser", "reg_fg_colour").toString());
     } else if (role == Qt::BackgroundRole) {
         if(m_data.at(index.row()).at(index.column()).isNull())
-            return QColor(PreferencesDialog::getSettingsValue("databrowser", "null_bg_colour").toString());
+            return QColor(Settings::getSettingsValue("databrowser", "null_bg_colour").toString());
         else if (isBinary(index))
-            return QColor(PreferencesDialog::getSettingsValue("databrowser", "bin_bg_colour").toString());
-        return QColor(PreferencesDialog::getSettingsValue("databrowser", "reg_bg_colour").toString());
+            return QColor(Settings::getSettingsValue("databrowser", "bin_bg_colour").toString());
+        return QColor(Settings::getSettingsValue("databrowser", "reg_bg_colour").toString());
     } else if(role == Qt::ToolTipRole) {
         sqlb::ForeignKeyClause fk = getForeignKeyClause(index.column()-1);
         if(fk.isSet())
@@ -288,15 +268,18 @@ QVariant SqliteTableModel::data(const QModelIndex &index, int role) const
 sqlb::ForeignKeyClause SqliteTableModel::getForeignKeyClause(int column) const
 {
     DBBrowserObject obj = m_db->getObjectByName(m_sTable);
-    if(obj.getname().size())
-        if (column > 0 && column < obj.table.fields().count())
-        {
-            return obj.table.fields().at(column)->foreignKey();
-        } else {
-            return sqlb::ForeignKeyClause();
-        }
-    else
-        return sqlb::ForeignKeyClause();
+    if(obj.getname().size() && (column >= 0 && column < obj.table.fields().count()))
+    {
+        // Note that the rowid column has number -1 here, it can safely be excluded since there will never be a
+        // foreign key on that column.
+
+        sqlb::ConstraintPtr ptr = obj.table.constraint(obj.table.fields().at(column), sqlb::Constraint::ForeignKeyConstraintType);
+        if(ptr)
+            return *(ptr.dynamicCast<sqlb::ForeignKeyClause>());
+    }
+
+    static const sqlb::ForeignKeyClause empty_foreign_key_clause;
+    return empty_foreign_key_clause;
 }
 
 bool SqliteTableModel::setData(const QModelIndex& index, const QVariant& value, int role)
@@ -425,27 +408,34 @@ bool SqliteTableModel::removeRows(int row, int count, const QModelIndex& parent)
 {
     beginRemoveRows(parent, row, row + count - 1);
 
+    bool ok = true;
+
     for(int i=count-1;i>=0;i--)
     {
-        m_db->deleteRecord(m_sTable, m_data.at(row + i).at(0));
-        m_data.removeAt(row + i);
+        if(m_db->deleteRecord(m_sTable, m_data.at(row + i).at(0)))
+        {
+            m_data.removeAt(row + i);
+            --m_rowCount;
+        } else {
+            ok = false;
+        }
     }
 
-    m_rowCount -= count;
-
     endRemoveRows();
-    return true;
+    return ok;
 }
 
 QModelIndex SqliteTableModel::dittoRecord(int old_row)
 {
+    insertRow(rowCount());
     int firstEditedColumn = 0;
     int new_row = rowCount() - 1;
 
     sqlb::Table t = sqlb::Table::parseSQL(m_db->getObjectByName(m_sTable).getsql()).first;
 
+    sqlb::FieldVector pk = t.primaryKey();
     for (int col = 0; col < t.fields().size(); ++col) {
-        if (!t.fields().at(col)->primaryKey()) {
+        if(!pk.contains(t.fields().at(col))) {
             if (!firstEditedColumn)
                 firstEditedColumn = col + 1;
 
@@ -612,7 +602,7 @@ void SqliteTableModel::updateFilter(int column, const QString& value)
         // Keep the default LIKE operator
 
         // Set the escape character if one has been specified in the settings dialog
-        QString escape_character = PreferencesDialog::getSettingsValue("databrowser", "filter_escape").toString();
+        QString escape_character = Settings::getSettingsValue("databrowser", "filter_escape").toString();
         if(escape_character == "'") escape_character = "''";
         if(escape_character.length())
             escape = QString("ESCAPE '%1'").arg(escape_character);
@@ -654,7 +644,7 @@ void SqliteTableModel::clearCache()
 
 bool SqliteTableModel::isBinary(const QModelIndex& index) const
 {
-    return m_vDataTypes.at(index.column()) == SQLITE_BLOB;
+    return m_data.at(index.row()).at(index.column()).left(1024).contains('\0');
 }
 
 QByteArray SqliteTableModel::encode(const QByteArray& str) const

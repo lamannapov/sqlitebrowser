@@ -14,6 +14,14 @@ QString escapeIdentifier(QString id)
     return '`' + id.replace('`', "``") + '`';
 }
 
+QStringList fieldVectorToFieldNames(const FieldVector& vector)
+{
+    QStringList result;
+    foreach(const FieldPtr& field, vector)
+        result.append(escapeIdentifier(field->name()));
+    return result;
+}
+
 bool ForeignKeyClause::isSet() const
 {
     return m_override.size() || m_table.size();
@@ -47,6 +55,36 @@ QString ForeignKeyClause::toString() const
 void ForeignKeyClause::setFromString(const QString& fk)
 {
     m_override = fk;
+}
+
+QString ForeignKeyClause::toSql(const FieldVector& applyOn) const
+{
+    QString result;
+    if(!m_name.isNull())
+        result += QString("CONSTRAINT %1 ").arg(escapeIdentifier(m_name));
+    result += QString("FOREIGN KEY(%1) REFERENCES %2").arg(fieldVectorToFieldNames(applyOn).join(",")).arg(this->toString());
+
+    return result;
+}
+
+QString UniqueConstraint::toSql(const FieldVector& applyOn) const
+{
+    QString result;
+    if(!m_name.isNull())
+        result += QString("CONSTRAINT %1 ").arg(escapeIdentifier(m_name));
+    result += QString("UNIQUE(%1)").arg(fieldVectorToFieldNames(applyOn).join(","));
+
+    return result;
+}
+
+QString PrimaryKeyConstraint::toSql(const FieldVector& applyOn) const
+{
+    QString result;
+    if(!m_name.isNull())
+        result += QString("CONSTRAINT %1 ").arg(escapeIdentifier(m_name));
+    result += QString("PRIMARY KEY(%1)").arg(fieldVectorToFieldNames(applyOn).join(","));
+
+    return result;
 }
 
 QString Field::toString(const QString& indent, const QString& sep) const
@@ -96,10 +134,10 @@ bool Field::isInteger() const
 
 void Table::clear()
 {
-    m_fields.clear();
     m_rowidColumn = "_rowid_";
+    m_fields.clear();
+    m_constraints.clear();
 }
-
 Table::~Table()
 {
     clear();
@@ -127,7 +165,45 @@ void Table::setFields(const FieldVector &fields)
     m_fields = fields;
 }
 
-int Table::findField(const QString &sname)
+void Table::setField(int index, FieldPtr f)
+{
+    FieldPtr oldField = m_fields[index];
+    m_fields[index] = f;
+
+    // Update all constraints. If an existing field is updated but was used in a constraint, the pointers in the constraint key needs to be updated
+    // to the new field, too.
+    if(oldField)
+    {
+        ConstraintMap::iterator it = m_constraints.begin();
+        while(it != m_constraints.end())
+        {
+            // Loop through all fields mentioned in a foreign key
+            FieldVector fields = it.key();
+            bool modified = false;
+            for(int i=0;i<fields.size();++i)
+            {
+                // If the field that is being modified is in there update it to the new field and set a flag that something has changed.
+                // This is used below to know when to update the map key
+                if(fields[i] == oldField)
+                {
+                    fields[i] = f;
+                    modified = true;
+                }
+            }
+            if(modified)
+            {
+                // When we need to update the map key, we insert a new constraint using the updated field vector and the old
+                // constraint information, and delete the old one afterwards
+                m_constraints.insert(fields, it.value());
+                it = m_constraints.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+}
+
+int Table::findField(const QString &sname) const
 {
     for(int i = 0; i < m_fields.count(); ++i)
     {
@@ -139,12 +215,13 @@ int Table::findField(const QString &sname)
 
 int Table::findPk() const
 {
-    for(int i = 0; i < m_fields.count(); ++i)
-    {
-        if(m_fields.at(i)->primaryKey())
-            return i;
-    }
-    return -1;
+    // TODO This is a stupid function (and always was) which should be fixed/improved
+
+    FieldVector pk = primaryKey();
+    if(pk.empty())
+        return -1;
+    else
+        return findField(pk.at(0)->name());
 }
 
 QStringList Table::fieldList() const
@@ -213,29 +290,17 @@ QString Table::sql() const
 
     sql += fieldList().join(",\n");
 
-    // primary key
-    if(!hasAutoIncrement())
+    // Constraints
+    ConstraintMap::const_iterator it = m_constraints.constBegin();
+    bool autoincrement = hasAutoIncrement();
+    while(it != m_constraints.constEnd())
     {
-        QString pk = ",\n\tPRIMARY KEY(";
-        bool pks_found = false;
-        foreach(FieldPtr f, m_fields)
+        if(!autoincrement || it.value()->type() != Constraint::PrimaryKeyConstraintType)
         {
-            if(f->primaryKey())
-            {
-                pk += escapeIdentifier(f->name()) + ",";
-                pks_found = true;
-            }
+            sql += QString(",\n\t");
+            sql += it.value()->toSql(it.key());
         }
-        pk.chop(1);
-        if(pks_found)
-            sql += pk + ")";
-    }
-
-    // foreign keys
-    foreach(FieldPtr f, m_fields)
-    {
-        if(f->foreignKey().isSet())
-            sql += QString(",\n\tFOREIGN KEY(%1) REFERENCES %2").arg(escapeIdentifier(f->name())).arg(f->foreignKey().toString());
+        ++it;
     }
 
     sql += "\n)";
@@ -245,6 +310,84 @@ QString Table::sql() const
         sql += " WITHOUT ROWID";
 
     return sql + ";";
+}
+
+void Table::addConstraint(FieldPtr field, ConstraintPtr constraint)
+{
+    FieldVector v;
+    v.push_back(field);
+    addConstraint(v, constraint);
+}
+
+void Table::addConstraint(FieldVector fields, ConstraintPtr constraint)
+{
+    m_constraints.insert(fields, constraint);
+}
+
+ConstraintPtr Table::constraint(FieldPtr field, Constraint::ConstraintTypes type) const
+{
+    QList<ConstraintPtr> list = constraints(field, type);
+    if(list.size())
+        return list.at(0);
+    else
+        return ConstraintPtr(nullptr);
+}
+
+ConstraintPtr Table::constraint(FieldVector fields, Constraint::ConstraintTypes type) const
+{
+    QList<ConstraintPtr> list = constraints(fields, type);
+    if(list.size())
+        return list.at(0);
+    else
+        return ConstraintPtr(nullptr);
+}
+
+QList<ConstraintPtr> Table::constraints(FieldPtr field, Constraint::ConstraintTypes type) const
+{
+    FieldVector v;
+    v.push_back(field);
+    return constraints(v, type);
+}
+
+QList<ConstraintPtr> Table::constraints(FieldVector fields, Constraint::ConstraintTypes type) const
+{
+    QList<ConstraintPtr> clist;
+    if(fields.isEmpty())
+        clist = m_constraints.values();
+    else
+        clist = m_constraints.values(fields);
+
+    if(type == Constraint::NoType)
+    {
+        return clist;
+    } else {
+        QList<ConstraintPtr> clist_typed;
+        foreach(const ConstraintPtr& ptr, clist)
+        {
+            if(ptr->type() == type)
+                clist_typed.push_back(ptr);
+        }
+        return clist_typed;
+    }
+}
+
+FieldVector& Table::primaryKeyRef()
+{
+    return const_cast<FieldVector&>(static_cast<const Table*>(this)->primaryKey());
+}
+
+const FieldVector& Table::primaryKey() const
+{
+    ConstraintMap::ConstIterator it = m_constraints.constBegin();
+    while(it != m_constraints.constEnd())
+    {
+        if(it.value()->type() == Constraint::PrimaryKeyConstraintType)
+            return it.key();
+        ++it;
+    }
+
+    static FieldVector emptyFieldVector;
+    return emptyFieldVector;
 }
 
 namespace
@@ -327,11 +470,12 @@ Table CreateTableWalker::table()
         // loop columndefs
         while(column != antlr::nullAST && column->getType() == sqlite3TokenTypes::COLUMNDEF)
         {
-            FieldPtr f;
-            parsecolumn(f, column->getFirstChild());
-            tab.addField(f);
+            parsecolumn(tab, column->getFirstChild());
             column = column->getNextSibling(); //COMMA or RPAREN
             column = column->getNextSibling(); //null or tableconstraint
+
+            s = s->getNextSibling();            // COLUMNDEF
+            s = s->getNextSibling();            // COMMA or RPAREN
         }
 
         // now we are finished or it is a tableconstraint
@@ -343,22 +487,32 @@ Table CreateTableWalker::table()
                 // It's not, so treat this as table constraints
 
                 antlr::RefAST tc = s->getFirstChild();
+
                 // skip constraint name, if there is any
+                QString constraint_name;
                 if(tc->getType() == sqlite3TokenTypes::CONSTRAINT)
-                    tc = tc->getNextSibling()->getNextSibling();
+                {
+                    tc = tc->getNextSibling();          // CONSTRAINT
+                    constraint_name = identifier(tc);
+                    tc = tc->getNextSibling();          // identifier
+                }
 
                 switch(tc->getType())
                 {
                 case sqlite3TokenTypes::PRIMARY:
                 {
+                    PrimaryKeyConstraint* pk = new PrimaryKeyConstraint;
+                    pk->setName(constraint_name);
+
                     tc = tc->getNextSibling()->getNextSibling(); // skip primary and key
                     tc = tc->getNextSibling(); // skip LPAREN
+
+                    FieldVector fields;
                     do
                     {
                         QString col = columnname(tc);
-                        int fieldindex = tab.findField(col);
-                        if(fieldindex != -1)
-                            tab.fields().at(fieldindex)->setPrimaryKey(true);
+                        FieldPtr field = tab.field(tab.findField(col));
+                        fields.push_back(field);
 
                         tc = tc->getNextSibling();
                         if(tc != antlr::nullAST
@@ -372,7 +526,7 @@ Table CreateTableWalker::table()
 
                         if(tc != antlr::nullAST && tc->getType() == sqlite3TokenTypes::AUTOINCREMENT)
                         {
-                            tab.fields().at(fieldindex)->setAutoIncrement(true);
+                            field->setAutoIncrement(true);
                             tc = tc->getNextSibling();
                         }
                         while(tc != antlr::nullAST && tc->getType() == sqlite3TokenTypes::COMMA)
@@ -380,19 +534,23 @@ Table CreateTableWalker::table()
                             tc = tc->getNextSibling(); // skip ident and comma
                         }
                     } while(tc != antlr::nullAST && tc->getType() != sqlite3TokenTypes::RPAREN);
+
+                    tab.addConstraint(fields, ConstraintPtr(pk));
                 }
                 break;
                 case sqlite3TokenTypes::UNIQUE:
                 {
+                    UniqueConstraint* unique = new UniqueConstraint;
+                    unique->setName(constraint_name);
+
                     tc = tc->getNextSibling(); // skip UNIQUE
                     tc = tc->getNextSibling(); // skip LPAREN
-                    QVector<int> uniquefieldsindex;
+                    FieldVector fields;
                     do
                     {
                         QString col = columnname(tc);
-                        int fieldindex = tab.findField(col);
-                        if(fieldindex != -1)
-                            uniquefieldsindex.append(fieldindex);
+                        FieldPtr field = tab.field(tab.findField(col));
+                        fields.push_back(field);
 
                         tc = tc->getNextSibling();
                         if(tc != antlr::nullAST
@@ -410,36 +568,38 @@ Table CreateTableWalker::table()
                         }
                     } while(tc != antlr::nullAST && tc->getType() != sqlite3TokenTypes::RPAREN);
 
-                    if(uniquefieldsindex.size() == 1)
-                    {
-                        tab.fields().at(uniquefieldsindex[0])->setUnique(true);
-                    }
+                    if(fields.size() == 1 && constraint_name.isEmpty())
+                        fields[0]->setUnique(true);
                     else
-                    {
-                        // else save on table a unique with more than one field
-                        m_bModifySupported = false;
-                    }
+                        tab.addConstraint(fields, ConstraintPtr(unique));
                 }
                 break;
                 case sqlite3TokenTypes::FOREIGN:
                 {
-                    sqlb::ForeignKeyClause fk;
+                    ForeignKeyClause* fk = new ForeignKeyClause;
+                    fk->setName(constraint_name);
 
                     tc = tc->getNextSibling();  // FOREIGN
                     tc = tc->getNextSibling();  // KEY
                     tc = tc->getNextSibling();  // LPAREN
-                    QString column_name = columnname(tc);
-                    tc = tc->getNextSibling();  // identifier
-                    if(tc->getType() == sqlite3TokenTypes::COMMA)
+
+                    FieldVector fields;
+                    do
                     {
-                        // No support for composite foreign keys
-                        m_bModifySupported = false;
-                        break;
-                    }
-                    tc = tc->getNextSibling();  // RPAREN
+                        QString col = columnname(tc);
+                        FieldPtr field = tab.field(tab.findField(col));
+                        fields.push_back(field);
+
+                        tc = tc->getNextSibling();
+
+                        while(tc != antlr::nullAST && tc->getType() == sqlite3TokenTypes::COMMA)
+                            tc = tc->getNextSibling(); // skip ident and comma
+                    } while(tc != antlr::nullAST && tc->getType() != sqlite3TokenTypes::RPAREN);
+
+                    tc = tc->getNextSibling();
                     tc = tc->getNextSibling();  // REFERENCES
 
-                    fk.setTable(identifier(tc));
+                    fk->setTable(identifier(tc));
                     tc = tc->getNextSibling();       // identifier
 
                     if(tc != antlr::nullAST && tc->getType() == sqlite3TokenTypes::LPAREN)
@@ -453,14 +613,13 @@ Table CreateTableWalker::table()
                                 fk_cols.push_back(identifier(tc));
                             tc = tc->getNextSibling();
                         }
-                        fk.setColumns(fk_cols);
+                        fk->setColumns(fk_cols);
 
                         tc = tc->getNextSibling();  // RPAREN
                     }
 
-                    fk.setConstraint(concatTextAST(tc, true));
-
-                    tab.fields().at(tab.findField(column_name))->setForeignKey(fk);
+                    fk->setConstraint(concatTextAST(tc, true));
+                    tab.addConstraint(fields, ConstraintPtr(fk));
                 }
                 break;
                 default:
@@ -487,7 +646,7 @@ Table CreateTableWalker::table()
     return tab;
 }
 
-void CreateTableWalker::parsecolumn(FieldPtr& f, antlr::RefAST c)
+void CreateTableWalker::parsecolumn(Table& table, antlr::RefAST c)
 {
     QString colname;
     QString type = "TEXT";
@@ -497,7 +656,7 @@ void CreateTableWalker::parsecolumn(FieldPtr& f, antlr::RefAST c)
     bool unique = false;
     QString defaultvalue;
     QString check;
-    sqlb::ForeignKeyClause foreignKey;
+    sqlb::ForeignKeyClause* foreignKey = 0;
 
     colname = columnname(c);
     c = c->getNextSibling(); //type?
@@ -566,7 +725,8 @@ void CreateTableWalker::parsecolumn(FieldPtr& f, antlr::RefAST c)
         {
             con = con->getNextSibling();    // REFERENCES
 
-            foreignKey.setTable(identifier(con));
+            foreignKey = new ForeignKeyClause;
+            foreignKey->setTable(identifier(con));
             con = con->getNextSibling();    // identifier
 
             if(con != antlr::nullAST && con->getType() == sqlite3TokenTypes::LPAREN)
@@ -580,12 +740,12 @@ void CreateTableWalker::parsecolumn(FieldPtr& f, antlr::RefAST c)
                         fk_cols.push_back(identifier(con));
                     con = con->getNextSibling();
                 }
-                foreignKey.setColumns(fk_cols);
+                foreignKey->setColumns(fk_cols);
 
                 con = con->getNextSibling();    // RPAREN
             }
 
-            foreignKey.setConstraint(concatTextAST(con, true));
+            foreignKey->setConstraint(concatTextAST(con, true));
         }
         break;
         default:
@@ -597,9 +757,20 @@ void CreateTableWalker::parsecolumn(FieldPtr& f, antlr::RefAST c)
         c = c->getNextSibling();
     }
 
-    f = FieldPtr( new Field(colname, type, notnull, defaultvalue, check, primarykey, unique));
+    FieldPtr f = FieldPtr(new Field(colname, type, notnull, defaultvalue, check, unique));
     f->setAutoIncrement(autoincrement);
-    f->setForeignKey(foreignKey);
+    table.addField(f);
+
+    if(foreignKey)
+        table.addConstraint(f, ConstraintPtr(foreignKey));
+    if(primarykey)
+    {
+        FieldVector v;
+        if(table.constraint(v, Constraint::PrimaryKeyConstraintType))
+            table.primaryKeyRef().push_back(f);
+        else
+            table.addConstraint(f, ConstraintPtr(new PrimaryKeyConstraint()));
+    }
 }
 
 } //namespace sqlb

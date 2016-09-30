@@ -51,9 +51,10 @@ Done. :)
 
 ### CentOS / Fedora Linux
 
-**1**. Make sure the `qt-devel`, `ant-antlr`, `sqlite-devel`, and `antlr-C++` packages are installed.<br />
+**1**. Make sure the `cmake`, `qt-devel`, `ant-antlr`, `sqlite-devel`, `antlr-C++`,
+and `gcc-c++` packages are installed.<br />
 ```
-$ sudo dnf install qt-devel ant-antlr sqlite-devel antlr-C++
+$ sudo dnf install cmake qt-devel ant-antlr sqlite-devel antlr-C++ gcc-c++
 ```
 
 **Note** - If on CentOS or an older version of Fedora, you may need to use `yum` instead of `dnf`
@@ -87,7 +88,7 @@ Building an .app bundle version takes a bit more effort, but isn't too hard.
 It requires SQLite and Qt 4.x/5.x to be installed first.  These are the
 [Homebrew](http://brew.sh) steps, though other package managers should work:
 
-    $ brew install sqlite --with-functions --without-readline
+    $ brew install sqlite --with-functions --with-json1 --without-readline
     $ brew install qt
     $ brew link sqlite3 --force
 
@@ -104,9 +105,9 @@ And compiling it:
     $ qmake
     $ make
     $ brew unlink sqlite3
-    $ mv src/sqlitebrowser.app /Applications/
+    $ mv src/DB\ Browser\ for\ SQLite.app /Applications/
 
-An icon for "sqlitebrowser" should now be in your main OSX Applications
+An icon for "DB Browser for SQLite" should now be in your main OSX Applications
 list, ready to launch.
 
 **Note 2** - There have been occasional [reports of compilation problems on OSX

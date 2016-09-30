@@ -11,12 +11,14 @@ void TestTable::sqlOutput()
 {
     Table tt("testtable");
     FieldPtr f = FieldPtr(new Field("id", "integer"));
-    f->setPrimaryKey(true);
     FieldPtr fkm = FieldPtr(new Field("km", "integer", false, "", "km > 1000"));
-    fkm->setPrimaryKey(true);
     tt.addField(f);
     tt.addField(FieldPtr(new Field("car", "text")));
     tt.addField(fkm);
+    FieldVector pk;
+    pk.push_back(f);
+    pk.push_back(fkm);
+    tt.addConstraint(pk, ConstraintPtr(new PrimaryKeyConstraint()));
 
     QCOMPARE(tt.sql(), QString("CREATE TABLE `testtable` (\n"
                                "\t`id`\tinteger,\n"
@@ -30,12 +32,12 @@ void TestTable::autoincrement()
 {
     Table tt("testtable");
     FieldPtr f = FieldPtr(new Field("id", "integer"));
-    f->setPrimaryKey(true);
     f->setAutoIncrement(true);
     FieldPtr fkm = FieldPtr(new Field("km", "integer"));
     tt.addField(f);
     tt.addField(FieldPtr(new Field("car", "text")));
     tt.addField(fkm);
+    tt.addConstraint(f, ConstraintPtr(new PrimaryKeyConstraint()));
 
     QCOMPARE(tt.sql(), QString("CREATE TABLE `testtable` (\n"
                                "\t`id`\tinteger PRIMARY KEY AUTOINCREMENT,\n"
@@ -48,12 +50,12 @@ void TestTable::notnull()
 {
     Table tt("testtable");
     FieldPtr f = FieldPtr(new Field("id", "integer"));
-    f->setPrimaryKey(true);
     f->setAutoIncrement(true);
     FieldPtr fkm = FieldPtr(new Field("km", "integer"));
     tt.addField(f);
     tt.addField(FieldPtr(new Field("car", "text", true)));
     tt.addField(fkm);
+    tt.addConstraint(f, ConstraintPtr(new PrimaryKeyConstraint()));
 
     QCOMPARE(tt.sql(), QString("CREATE TABLE `testtable` (\n"
                                "\t`id`\tinteger PRIMARY KEY AUTOINCREMENT,\n"
@@ -66,11 +68,11 @@ void TestTable::withoutRowid()
 {
     Table tt("testtable");
     FieldPtr f = FieldPtr(new Field("a", "integer"));
-    f->setPrimaryKey(true);
     f->setAutoIncrement(true);
     tt.addField(f);
     tt.addField(FieldPtr(new Field("b", "integer")));
     tt.setRowidColumn("a");
+    tt.addConstraint(f, ConstraintPtr(new PrimaryKeyConstraint()));
 
     QCOMPARE(tt.sql(), QString("CREATE TABLE `testtable` (\n"
                                "\t`a`\tinteger PRIMARY KEY AUTOINCREMENT,\n"
@@ -82,12 +84,35 @@ void TestTable::foreignKeys()
 {
     Table tt("testtable");
     FieldPtr f = FieldPtr(new Field("a", "integer"));
-    f->setForeignKey(sqlb::ForeignKeyClause("b", QStringList("c")));
     tt.addField(f);
+    tt.addConstraint(f, sqlb::ConstraintPtr(new sqlb::ForeignKeyClause("b", QStringList("c"))));
 
     QCOMPARE(tt.sql(), QString("CREATE TABLE `testtable` (\n"
                                "\t`a`\tinteger,\n"
                                "\tFOREIGN KEY(`a`) REFERENCES `b`(`c`)\n"
+                               ");"));
+}
+
+void TestTable::uniqueConstraint()
+{
+    Table tt("testtable");
+    FieldPtr f1 = FieldPtr(new Field("a", "integer"));
+    FieldPtr f2 = FieldPtr(new Field("b", "integer"));
+    FieldPtr f3 = FieldPtr(new Field("c", "integer"));
+    f1->setUnique(true);
+    FieldVector uc;
+    uc.push_back(f2);
+    uc.push_back(f3);
+    tt.addField(f1);
+    tt.addField(f2);
+    tt.addField(f3);
+    tt.addConstraint(uc, sqlb::ConstraintPtr(new sqlb::UniqueConstraint()));
+
+    QCOMPARE(tt.sql(), QString("CREATE TABLE `testtable` (\n"
+                               "\t`a`\tinteger UNIQUE,\n"
+                               "\t`b`\tinteger,\n"
+                               "\t`c`\tinteger,\n"
+                               "\tUNIQUE(`b`,`c`)\n"
                                ");"));
 }
 
@@ -111,8 +136,9 @@ void TestTable::parseSQL()
     QVERIFY(tab.fields().at(1)->type() == "text");
     QVERIFY(tab.fields().at(2)->type() == "VARCHAR(255)");
 
+    FieldVector pk = tab.primaryKey();
     QVERIFY(tab.fields().at(0)->autoIncrement());
-    QVERIFY(tab.fields().at(0)->primaryKey());
+    QVERIFY(pk.size() == 1 && pk.at(0) == tab.fields().at(0));
     QVERIFY(tab.fields().at(1)->notnull());
     QCOMPARE(tab.fields().at(1)->defaultValue(), QString("'xxxx'"));
     QCOMPARE(tab.fields().at(1)->check(), QString(""));
@@ -147,7 +173,8 @@ void TestTable::parseSQLdefaultexpr()
     QCOMPARE(tab.fields().at(3)->defaultValue(), QString(""));
     QCOMPARE(tab.fields().at(3)->check(), QString(""));
 
-    QVERIFY(tab.fields().at(0)->primaryKey());
+    sqlb::FieldVector pk = tab.primaryKey();
+    QVERIFY(pk.size() == 1 && pk.at(0) == tab.fields().at(0));
 }
 
 void TestTable::parseSQLMultiPk()
@@ -168,8 +195,8 @@ void TestTable::parseSQLMultiPk()
     QVERIFY(tab.fields().at(0)->type() == "integer");
     QVERIFY(tab.fields().at(1)->type() == "integer");
 
-    QVERIFY(tab.fields().at(0)->primaryKey());
-    QVERIFY(tab.fields().at(1)->primaryKey());
+    sqlb::FieldVector pk = tab.primaryKey();
+    QVERIFY(pk.size() == 2 && pk.at(0) == tab.fields().at(0) && pk.at(1) == tab.fields().at(1));
 }
 
 void TestTable::parseSQLForeignKey()
@@ -248,10 +275,12 @@ void TestTable::parseSQLForeignKeys()
     QCOMPARE(tab.name(), QString("foreign_key_test"));
     QCOMPARE(tab.fields().at(0)->name(), QString("a"));
     QCOMPARE(tab.fields().at(0)->type(), QString("int"));
-    QCOMPARE(tab.fields().at(0)->foreignKey().table(), QString("x"));
+#if QT_VERSION_MAJOR >= 5
+    QCOMPARE(tab.constraint(tab.fields().at(0), sqlb::Constraint::ForeignKeyConstraintType).dynamicCast<sqlb::ForeignKeyClause>()->table(), QString("x"));
+#endif
     QCOMPARE(tab.fields().at(1)->name(), QString("b"));
     QCOMPARE(tab.fields().at(1)->type(), QString("int"));
-    QCOMPARE(tab.fields().at(1)->foreignKey().toString(), QString("`w`(`y`,`z`) on delete set null"));
+    QCOMPARE(tab.constraint(tab.fields().at(1), sqlb::Constraint::ForeignKeyConstraintType).dynamicCast<sqlb::ForeignKeyClause>()->toString(), QString("`w`(`y`,`z`) on delete set null"));
 }
 
 void TestTable::parseSQLCheckConstraint()

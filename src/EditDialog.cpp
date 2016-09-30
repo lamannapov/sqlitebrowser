@@ -1,7 +1,7 @@
 #include "EditDialog.h"
 #include "ui_EditDialog.h"
 #include "sqlitedb.h"
-#include "PreferencesDialog.h"
+#include "Settings.h"
 #include "src/qhexedit.h"
 #include "FileDialog.h"
 
@@ -10,10 +10,15 @@
 #include <QShortcut>
 #include <QImageReader>
 #include <QBuffer>
+//#include <QStringBuilder>
+#include <QModelIndex>
 
 EditDialog::EditDialog(QWidget* parent)
     : QDialog(parent),
-      ui(new Ui::EditDialog)
+      ui(new Ui::EditDialog),
+      currentIndex(QModelIndex()),
+      dataType(Null),
+      isReadOnly(true)
 {
     ui->setupUi(this);
 
@@ -24,12 +29,18 @@ EditDialog::EditDialog(QWidget* parent)
     hexEdit = new QHexEdit(this);
     hexLayout->addWidget(hexEdit);
     hexEdit->setOverwriteMode(false);
-    connect(hexEdit, SIGNAL(dataChanged()), this, SLOT(hexDataChanged()));
 
     QShortcut* ins = new QShortcut(QKeySequence(Qt::Key_Insert), this);
     connect(ins, SIGNAL(activated()), this, SLOT(toggleOverwriteMode()));
 
-    reset();
+    // Set the font for the text and hex editors
+    QFont editorFont(Settings::getSettingsValue("databrowser", "font").toString());
+    editorFont.setPointSize(Settings::getSettingsValue("databrowser", "fontsize").toInt());
+    ui->editorText->setFont(editorFont);
+    hexEdit->setFont(editorFont);
+
+    connect(ui->editorText, SIGNAL(textChanged()), this, SLOT(updateApplyButton()));
+    connect(hexEdit, SIGNAL(dataChanged()), this, SLOT(updateApplyButton()));
 }
 
 EditDialog::~EditDialog()
@@ -37,33 +48,15 @@ EditDialog::~EditDialog()
     delete ui;
 }
 
-void EditDialog::reset()
+void EditDialog::setCurrentIndex(const QModelIndex& idx)
 {
-    // Set the font for the text and hex editors
-    QFont editorFont(PreferencesDialog::getSettingsValue("databrowser", "font").toString());
-    editorFont.setPointSize(PreferencesDialog::getSettingsValue("databrowser", "fontsize").toInt());
-    ui->editorText->setFont(editorFont);
-    hexEdit->setFont(editorFont);
+    currentIndex = QPersistentModelIndex(idx);
 
-    curRow = -1;
-    curCol = -1;
-    ui->editorText->clear();
-    ui->editorText->setFocus();
-    ui->editorImage->clear();
-    hexEdit->setData(QByteArray());
-    oldData = "";
+    QByteArray data = idx.data(Qt::EditRole).toByteArray();
+    loadData(data);
+    updateCellInfo(data);
 
-    // Hide the warning about editing non-text data in text mode
-    ui->labelBinaryWarning->setVisible(false);
-
-    // Update the cell data info in the bottom left of the Edit Cell
-    int dataType = checkDataType();
-    updateCellInfo(dataType);
-}
-
-void EditDialog::closeEvent(QCloseEvent*)
-{
-    emit goingAway();
+    ui->buttonApply->setDisabled(true);
 }
 
 void EditDialog::showEvent(QShowEvent*)
@@ -84,52 +77,153 @@ void EditDialog::reject()
     return;
 }
 
-void EditDialog::loadText(const QByteArray& data, int row, int col)
+// Loads data from a cell into the Edit Cell window
+void EditDialog::loadData(const QByteArray& data)
 {
-    curRow = row;
-    curCol = col;
-    oldData = data;
-
-    // Load data
-    QString textData = QString::fromUtf8(data.constData(), data.size());
-    ui->editorText->setPlainText(textData);
-    hexEdit->setData(data);
-
-    // Determine the data type in the cell
-    int dataType = checkDataType();
-
-    // Do some data type specific handling
     QImage img;
-    switch (dataType) {
-    case Text:
-        // For text, ensure it's all selected in the Edit Cell
-        ui->editorText->selectAll();
+    QString textData;
 
-        // Clear any image from the image viewing widget
-        ui->editorImage->setPixmap(QPixmap(0,0));
-        break;
-
-    case Image:
-        // For images, load the image into the image viewing widget
-        if (img.loadFromData(hexEdit->data())) {
-            ui->editorImage->setPixmap(QPixmap::fromImage(img));
-        }
-        break;
-
-    default:
-        // Clear the image viewing widget for everything else too
-        ui->editorImage->setPixmap(QPixmap(0,0));
-        break;
-    }
+    // Determine the data type, saving that info in the class variable
+    dataType = checkDataType(data);
 
     // Get the current editor mode (eg text, hex, or image mode)
     int editMode = ui->editorStack->currentIndex();
 
-    // Show or hide the warning about editing binary data in text mode
-    updateBinaryEditWarning(editMode, dataType);
+    // Data type specific handling
+    switch (dataType) {
+    case Null:
+        switch (editMode) {
+        case TextEditor:
+            // Empty the text editor contents, then enable text editing
+            ui->editorText->clear();
+            ui->editorText->setEnabled(true);
 
-    // Update the cell data info in the bottom left of the Edit Cell
-    updateCellInfo(dataType);
+            // The text widget buffer is now the main data source
+            dataSource = TextBuffer;
+            break;
+
+        case HexEditor:
+            // Load the Null into the hex editor
+            hexEdit->setData(data);
+
+            // The hex widget buffer is now the main data source
+            dataSource = HexBuffer;
+            break;
+
+        case ImageViewer:
+            // Clear any image from the image viewing widget
+            ui->editorImage->setPixmap(QPixmap(0,0));
+
+            // Load the Null into the hex editor
+            hexEdit->setData(data);
+
+            // The hex widget buffer is now the main data source
+            dataSource = HexBuffer;
+            break;
+        }
+        break;
+
+    case Text:
+        switch (editMode) {
+        case TextEditor:
+            // Load the text into the text editor
+            textData = QString::fromUtf8(data.constData(), data.size());
+            ui->editorText->setPlainText(textData);
+
+            // Enable text editing
+            ui->editorText->setEnabled(true);
+
+            // Select all of the text by default
+            ui->editorText->selectAll();
+
+            // The text widget buffer is now the main data source
+            dataSource = TextBuffer;
+
+            break;
+
+        case HexEditor:
+            // Load the text into the hex editor
+            hexEdit->setData(data);
+
+            // The hex widget buffer is now the main data source
+            dataSource = HexBuffer;
+            break;
+
+        case ImageViewer:
+            // Clear any image from the image viewing widget
+            ui->editorImage->setPixmap(QPixmap(0,0));
+
+            // Load the text into the text editor
+            textData = QString::fromUtf8(data.constData(), data.size());
+            ui->editorText->setPlainText(textData);
+
+            // Enable text editing
+            ui->editorText->setEnabled(true);
+
+            // Select all of the text by default
+            ui->editorText->selectAll();
+
+            // The text widget buffer is now the main data source
+            dataSource = TextBuffer;
+
+            break;
+        }
+        break;
+
+    case Image:
+        // Image data is kept in the hex widget, mainly for safety.  If we
+        // stored it in the editorImage widget instead, it would be a pixmap
+        // and there's no good way to restore that back to the original
+        // (pristine) image data.  eg image metadata would be lost
+        hexEdit->setData(data);
+
+        // The hex widget buffer is now the main data source
+        dataSource = HexBuffer;
+
+        // Update the display if in text edit or image viewer mode
+        switch (editMode) {
+        case TextEditor:
+            // Disable text editing, and use a warning message as the contents
+            ui->editorText->setText(QString("<i>" %
+                    tr("Image data can't be viewed with the text editor") %
+                    "</i>"));
+            ui->editorText->setEnabled(false);
+            break;
+
+        case ImageViewer:
+            // Load the image into the image viewing widget
+            if (img.loadFromData(data)) {
+                ui->editorImage->setPixmap(QPixmap::fromImage(img));
+            }
+            break;
+        }
+        break;
+
+    default:
+        // The data seems to be general binary data, which is always loaded
+        // into the hex widget (the only safe place for it)
+
+        // Load the data into the hex editor
+        hexEdit->setData(data);
+
+        // The hex widget buffer is now the main data source
+        dataSource = HexBuffer;
+
+        switch (editMode) {
+        case TextEditor:
+            // Disable text editing, and use a warning message as the contents
+            ui->editorText->setText(QString("<i>" %
+                    tr("Binary data can't be viewed with the text editor") %
+                    "</i>"));
+            ui->editorText->setEnabled(false);
+            break;
+
+        case ImageViewer:
+            // Clear any image from the image viewing widget
+            ui->editorImage->setPixmap(QPixmap(0,0));
+            break;
+        }
+    }
 }
 
 void EditDialog::importData()
@@ -153,30 +247,46 @@ void EditDialog::importData()
         if(file.open(QIODevice::ReadOnly))
         {
             QByteArray d = file.readAll();
-            hexEdit->setData(d);
-            ui->editorText->setPlainText(d);
+            loadData(d);
             file.close();
 
             // Update the cell data info in the bottom left of the Edit Cell
-            int dataType = checkDataType();
-            updateCellInfo(dataType);
+            updateCellInfo(d);
         }
     }
 }
 
 void EditDialog::exportData()
 {
+    // Images get special treatment
+    QString fileExt;
+    if (dataType == Image) {
+        // Determine the likely filename extension
+        QByteArray cellData = hexEdit->data();
+        QBuffer imageBuffer(&cellData);
+        QImageReader imageReader(&imageBuffer);
+        QString imageFormat = imageReader.format();
+        fileExt = imageFormat.toUpper() % " " % tr("Image") % "(*." % imageFormat.toLower() % ");;All files(*)";
+    } else {
+        fileExt = tr("Text files(*.txt);;All files(*)");
+    }
+
     QString fileName = FileDialog::getSaveFileName(
                 this,
                 tr("Choose a filename to export data"),
-                tr("Text files(*.txt);;All files(*)"));
-
+                fileExt);
     if(fileName.size() > 0)
     {
         QFile file(fileName);
         if(file.open(QIODevice::WriteOnly))
         {
-            file.write(hexEdit->data());
+            if (dataSource == HexBuffer) {
+                // Data source is the hex buffer
+                file.write(hexEdit->data());
+            } else {
+                // Data source is the text buffer
+                file.write(ui->editorText->toPlainText().toUtf8());
+            }
             file.close();
         }
     }
@@ -187,63 +297,121 @@ void EditDialog::setNull()
     ui->editorText->clear();
     ui->editorImage->clear();
     hexEdit->setData(QByteArray());
+    dataType = Null;
+
+    // Check if in text editor mode
+    int editMode = ui->editorStack->currentIndex();
+    if (editMode == TextEditor) {
+        // Setting NULL in the text editor switches the data source to it
+        dataSource = TextBuffer;
+
+        // Ensure the text editor is enabled
+        ui->editorText->setEnabled(true);
+
+        // The text editor doesn't know the difference between an empty string
+        // and a NULL, so we need to record NULL outside of that
+        textNullSet = true;
+    }
 
     // Update the cell data info in the bottom left of the Edit Cell
-    int dataType = checkDataType();
-    updateCellInfo(dataType);
+    updateCellInfo(hexEdit->data());
 
     ui->editorText->setFocus();
 }
 
+void EditDialog::updateApplyButton()
+{
+    if (!isReadOnly)
+        ui->buttonApply->setEnabled(true);
+}
+
 void EditDialog::accept()
 {
-    // Don't update if the data hasn't changed
-    // To differentiate NULL and empty byte arrays, we also compare the NULL flag
-    if(hexEdit->data() != oldData || hexEdit->data().isNull() != oldData.isNull())
-    {
-        const QString dataType = ui->comboMode->currentText();
-        bool isBlob = dataType == tr("Binary");
-        emit updateRecordText(curRow, curCol, isBlob, hexEdit->data());
+    if(!currentIndex.isValid())
+        return;
+
+    if (dataSource == TextBuffer) {
+        // Check if a NULL is set in the text editor
+        if (textNullSet) {
+            emit recordTextUpdated(currentIndex, hexEdit->data(), true);
+        } else {
+            // It's not NULL, so proceed with normal text string checking
+            QString oldData = currentIndex.data(Qt::EditRole).toString();
+            QString newData = ui->editorText->toPlainText();
+            if (oldData != newData)
+                // The data is different, so commit it back to the database
+                emit recordTextUpdated(currentIndex, newData.toUtf8(), false);
+        }
+    } else {
+        // The data source is the hex widget buffer, thus binary data
+        QByteArray oldData = currentIndex.data(Qt::EditRole).toByteArray();
+        QByteArray newData = hexEdit->data();
+        if (newData != oldData)
+            emit recordTextUpdated(currentIndex, newData, true);
     }
 }
 
 // Called when the user manually changes the "Mode" drop down combobox
-void EditDialog::editModeChanged(int editMode)
+void EditDialog::editModeChanged(int newMode)
 {
-    // Switch to the selected editor
-    ui->editorStack->setCurrentIndex(editMode);
+    // * If the dataSource is the text buffer, the data is always text *
+    if (dataSource == TextBuffer) {
+        switch (newMode) {
+        case TextEditor: // Switching to the text editor
+            // Nothing to do, as the text is already in the text buffer
+            break;
 
-    // Show or hide the warning about editing binary data in text mode
-    int dataType = checkDataType();
-    updateBinaryEditWarning(editMode, dataType);
-}
+        case HexEditor: // Switching to the hex editor
+            // Convert the text widget buffer for the hex widget
+            hexEdit->setData(ui->editorText->toPlainText().toUtf8());
 
-void EditDialog::editTextChanged()
-{
-    if(ui->editorText->hasFocus())
-    {
-        hexEdit->blockSignals(true);
-        hexEdit->setData(ui->editorText->toPlainText().toUtf8());
-        hexEdit->blockSignals(false);
+            // The hex widget buffer is now the main data source
+            dataSource = HexBuffer;
+            break;
 
-        // Update the cell data info in the bottom left of the Edit Cell
-        int dataType = checkDataType();
-        updateCellInfo(dataType);
+        case ImageViewer:
+            // Clear any image from the image viewing widget
+            ui->editorImage->setPixmap(QPixmap(0,0));
+            break;
+        }
+
+        // Switch to the selected editor
+        ui->editorStack->setCurrentIndex(newMode);
+        return;
+    }
+
+    // * If the dataSource is the hex buffer, the contents could be anything
+    //   so we just pass it to our loadData() function to handle *
+    if (dataSource == HexBuffer) {
+        // Switch to the selected editor first, as loadData() relies on it
+        // being current
+        ui->editorStack->setCurrentIndex(newMode);
+
+        // Load the data into the appropriate widget, as done by loadData()
+        loadData(hexEdit->data());
     }
 }
 
-void EditDialog::hexDataChanged()
+// Called for every keystroke in the text editor (only)
+void EditDialog::editTextChanged()
 {
-    // Update the text editor accordingly
-    ui->editorText->blockSignals(true);
-    ui->editorText->setPlainText(QString::fromUtf8(hexEdit->data().constData(), hexEdit->data().size()));
-    ui->editorText->blockSignals(false);
+    if (dataSource == TextBuffer) {
+        // Data has been changed in the text editor, so it can't be a NULL
+        // any more
+        textNullSet = false;
+
+        // Update the cell info in the bottom left manually.  This is because
+        // updateCellInfo() only works with QByteArray's (for now)
+        int dataLength = ui->editorText->toPlainText().length();
+        ui->labelType->setText(tr("Type of data currently in cell: Text / Numeric"));
+        ui->labelSize->setText(tr("%n char(s)", "", dataLength));
+    }
 }
 
 // Determine the type of data in the cell
-int EditDialog::checkDataType()
+int EditDialog::checkDataType(const QByteArray& data)
 {
-    QByteArray cellData = hexEdit->data();
+    QByteArray cellData = data;
 
     // Check for NULL data type
     if (cellData.isNull()) {
@@ -290,52 +458,46 @@ void EditDialog::setFocus()
 }
 
 // Enables or disables the Apply, Null, & Import buttons in the Edit Cell dock
-void EditDialog::allowEditing(bool on)
+void EditDialog::setReadOnly(bool ro)
 {
-    ui->buttonApply->setEnabled(on);
-    ui->buttonNull->setEnabled(on);
-    ui->buttonImport->setEnabled(on);
-}
+    isReadOnly = ro;
 
-// Shows or hides the warning about editing binary data in text mode
-void EditDialog::updateBinaryEditWarning(int editMode, int dataType)
-{
-    // If we're in the text editor, and the data type is not plain text
-    // display a warning about editing it
-    if ((editMode == 0) && ((dataType != Text) && (dataType != Null))) {
-        // Display the warning
-        ui->labelBinaryWarning->setVisible(true);
-    } else {
-        // Hide the warning
-        ui->labelBinaryWarning->setVisible(false);
-    }
+    ui->buttonApply->setEnabled(!ro);
+    ui->buttonNull->setEnabled(!ro);
+    ui->buttonImport->setEnabled(!ro);
 }
 
 // Update the information labels in the bottom left corner of the dialog
-void EditDialog::updateCellInfo(int cellType)
+void EditDialog::updateCellInfo(const QByteArray& data)
 {
-    QByteArray cellData = hexEdit->data();
+    QByteArray cellData = data;
 
     // Image data needs special treatment
-    if (cellType == Image) {
+    if (dataType == Image) {
         QBuffer imageBuffer(&cellData);
-        QImageReader image(&imageBuffer);
+        QImageReader imageReader(&imageBuffer);
 
         // Display the image format
-        QString imageFormat = image.format();
+        QString imageFormat = imageReader.format();
+
         ui->labelType->setText(tr("Type of data currently in cell: %1 Image").arg(imageFormat.toUpper()));
 
-        // Display the image dimensions
-        QSize imageSize = image.size();
-        ui->labelSize->setText(tr("%1x%2 pixel(s)").arg(imageSize.width()).arg(imageSize.height()));
+        // Display the image dimensions and size
+        QSize imageDimensions = imageReader.size();
+        int imageSize = cellData.size();
+
+        QString labelSizeText = tr("%1x%2 pixel(s)").arg(imageDimensions.width()).arg(imageDimensions.height()) + ", " + humanReadableSize(imageSize);
+
+        ui->labelSize->setText(labelSizeText);
+
         return;
     }
 
-    // Determine the legth of the cell data
+    // Determine the length of the cell data
     int dataLength = cellData.length();
 
     // Use a switch statement for the other data types to keep things neat :)
-    switch (cellType) {
+    switch (dataType) {
     case Null:
         // NULL data type
         ui->labelType->setText(tr("Type of data currently in cell: NULL"));
@@ -354,4 +516,28 @@ void EditDialog::updateCellInfo(int cellType)
         ui->labelSize->setText(tr("%n byte(s)", "", dataLength));
         break;
     }
+}
+
+QString EditDialog::humanReadableSize(double byteCount)
+{
+    QList<QString> units;
+
+    units<<""<<"Ki"<<"Mi"<<"Gi"<<"Ti"<<"Pi"<<"Ei"<<"Zi";
+
+    foreach (QString unit, units)
+    {
+        if (fabs(byteCount) < 1024.0)
+        {
+            QString size = QString::number(byteCount, 'f', 2);
+
+            return size + " " + unit + "B";
+        }
+
+        byteCount /= 1024.0;
+    }
+
+    QString yiUnit = "Yi";
+    QString size = QString::number(byteCount, 'f', 2);
+
+    return size + " " + yiUnit + "B";
 }
